@@ -1,0 +1,37 @@
+<div class="dashboard">
+  <header class="dashboard-header">
+    <h1 class="dashboard-title">Agent Sessions</h1>
+    <div class="connection-indicator" [class.connected]="connected()" [class.disconnected]="!connected()">
+      <span class="indicator-dot"></span>
+      <span class="indicator-label">{{ connected() ? 'Live' : 'Reconnecting...' }}</span>
+    </div>
+  </header>
+
+  <div class="dashboard-body">
+    <main class="sessions-area">
+      <div class="sessions-grid">
+        @if (activeSessions().length === 0 && closedSessions().length === 0) {
+          <div class="empty-state">
+            <p>No active sessions</p>
+          </div>
+        }
+        @for (session of activeSessions(); track session.sessionId) {
+          <app-session-card [session]="session" />
+        }
+      </div>
+
+      @if (closedSessions().length > 0) {
+        <div class="closed-sessions-bar">
+          <span class="closed-bar-label">Closed ({{ closedSessions().length }})</span>
+          <div class="closed-sessions-list">
+            @for (session of closedSessions(); track session.sessionId) {
+              <app-session-card [session]="session" [compact]="true" />
+            }
+          </div>
+        </div>
+      }
+    </main>
+
+    <app-shortcut-sidebar />
+  </div>
+</div>

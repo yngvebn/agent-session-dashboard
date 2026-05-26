@@ -1,0 +1,162 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  flex-shrink: 0;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin: 0.5rem 0 1.5rem 0;
+  overflow: hidden;
+  align-self: stretch;
+}
+
+.sidebar-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.shortcuts-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 0;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 1.5rem;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: background-color 0.1s ease;
+
+  &:hover {
+    background-color: var(--card-bg);
+
+    .shortcut-edit-btn,
+    .shortcut-delete-btn {
+      opacity: 1;
+    }
+  }
+
+  &.dragging {
+    opacity: 0.4;
+  }
+
+  &.drag-over {
+    border-top: 2px solid var(--status-running-text);
+  }
+}
+
+.shortcut-favicon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  object-fit: contain;
+}
+
+.shortcut-name {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-primary);
+    text-decoration: underline;
+  }
+}
+
+.shortcut-name-input {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  outline: none;
+  padding: 0;
+  font-family: inherit;
+  width: 0; // flex takes care of actual width
+
+  &:focus {
+    border-bottom-color: var(--status-running-text);
+  }
+}
+
+.shortcut-edit-btn,
+.shortcut-delete-btn {
+  opacity: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 0.15rem 0.25rem;
+  flex-shrink: 0;
+  line-height: 1;
+  border-radius: 3px;
+  transition: opacity 0.1s ease, color 0.1s ease;
+
+  &:hover {
+    color: var(--text-secondary);
+    background-color: var(--card-border);
+  }
+}
+
+.shortcuts-empty {
+  padding: 1rem 1.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.add-shortcut {
+  flex-shrink: 0;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.add-shortcut-input {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  padding: 0.35rem 0.5rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.1s ease;
+
+  &::placeholder {
+    color: var(--text-muted);
+  }
+
+  &:focus {
+    border-color: var(--text-secondary);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  &.loading {
+    border-color: var(--status-idle-text);
+  }
+}

@@ -1,0 +1,54 @@
+/* CSS Custom Properties — Dark Theme */
+:root {
+  /* Backgrounds */
+  --bg-primary: #0f1117;
+  --bg-secondary: #161b22;
+  --card-bg: #1c2128;
+  --card-border: #30363d;
+  --border-color: #30363d;
+
+  /* Text */
+  --text-primary: #e6edf3;
+  --text-secondary: #adbac7;
+  --text-muted: #636e7b;
+
+  /* Status: running (green) */
+  --status-running-bg: rgba(35, 134, 54, 0.25);
+  --status-running-text: #3fb950;
+
+  /* Status: idle (amber) */
+  --status-idle-bg: rgba(187, 128, 9, 0.25);
+  --status-idle-text: #d29922;
+
+  /* Status: closed (grey) */
+  --status-closed-bg: rgba(110, 118, 129, 0.2);
+  --status-closed-text: #8b949e;
+
+  /* Status: crashed (muted, inactive) */
+  --status-crashed-bg: rgba(110, 118, 129, 0.15);
+  --status-crashed-text: #6e7681;
+}
+
+/* Reset & base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial,
+    sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}

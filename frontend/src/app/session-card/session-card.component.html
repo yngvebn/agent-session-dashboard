@@ -1,0 +1,69 @@
+@if (compact) {
+  <article class="session-card compact-card">
+    <span class="session-name" [title]="session.workingDir || session.name">{{ session.name }}</span>
+    <span class="status-badge" [attr.data-status]="session.status">
+      {{ statusIcon }} {{ session.status | uppercase }}
+    </span>
+    <span class="compact-time">{{ lastSeenAgo() }}</span>
+    <div class="footer-actions">
+      <button class="copy-btn" (click)="copyResumeCommand()" [class.copied]="copied()" title="Copy resume command">
+        @if (copied()) { ✓ } @else { ⎘ }
+      </button>
+      @if (isDismissable) {
+        <button class="dismiss-btn" (click)="dismiss()" title="Dismiss session">✕</button>
+      }
+    </div>
+  </article>
+} @else {
+  <article class="session-card" [class.dimmed]="isInactive">
+    <header class="card-header">
+      <span class="session-name" [title]="session.workingDir || session.name">{{ session.name }}</span>
+      <span class="status-badge" [attr.data-status]="session.status">
+        {{ statusIcon }} {{ session.status | uppercase }}
+      </span>
+    </header>
+
+    @if (session.branch) {
+      <div class="branch-row">
+        <span class="branch-label">⎇</span>
+        <span class="branch-value" [title]="session.branch">{{ session.branch }}</span>
+      </div>
+    }
+
+    @if (session.worktree) {
+      <div class="worktree-row">
+        <span class="worktree-label">⎇</span>
+        <span class="worktree-value" [title]="session.worktree">{{ worktreeName() }}</span>
+      </div>
+    }
+
+    <div class="card-body">
+      <div class="time-row">
+        <span class="label">last seen</span>
+        <span class="value">{{ lastSeenAgo() }}</span>
+      </div>
+      <div class="time-row">
+        <span class="label">started</span>
+        <span class="value">{{ startedAgo() }}</span>
+      </div>
+    </div>
+
+    @if (session.lastActivity) {
+      <div class="activity-row" [title]="session.lastActivity">
+        <span class="activity-text">{{ session.lastActivity }}</span>
+      </div>
+    }
+
+    <footer class="card-footer">
+      <span class="pid">PID {{ session.pid }}</span>
+      <div class="footer-actions">
+        <button class="copy-btn" (click)="copyResumeCommand()" [class.copied]="copied()" title="Copy resume command">
+          @if (copied()) { ✓ Copied } @else { ⎘ Resume }
+        </button>
+        @if (isDismissable) {
+          <button class="dismiss-btn" (click)="dismiss()" title="Dismiss session">✕</button>
+        }
+      </div>
+    </footer>
+  </article>
+}

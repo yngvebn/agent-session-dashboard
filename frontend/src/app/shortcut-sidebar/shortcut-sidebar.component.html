@@ -1,0 +1,77 @@
+<aside class="shortcut-sidebar">
+  <div class="sidebar-header">
+    <span class="sidebar-title">Shortcuts</span>
+  </div>
+
+  <div class="shortcuts-list">
+    @for (shortcut of service.shortcuts(); track shortcut.id; let i = $index) {
+      <div
+        class="shortcut-item"
+        [class.dragging]="draggingIndex() === i"
+        [class.drag-over]="dragOverIndex() === i && draggingIndex() !== i"
+        draggable="true"
+        (dragstart)="onDragStart($event, i)"
+        (dragover)="onDragOver($event, i)"
+        (dragleave)="onDragLeave()"
+        (drop)="onDrop($event, i)"
+        (dragend)="onDragEnd()"
+      >
+        <img
+          class="shortcut-favicon"
+          [src]="faviconUrl(shortcut.url)"
+          alt=""
+          width="16"
+          height="16"
+        />
+
+        @if (editingId() === shortcut.id) {
+          <input
+            class="shortcut-name-input"
+            [value]="editingName()"
+            (input)="editingName.set($any($event.target).value)"
+            (blur)="commitEdit(shortcut.id)"
+            (keyup.enter)="commitEdit(shortcut.id)"
+            (keyup.escape)="cancelEdit()"
+            autofocus
+          />
+        } @else {
+          <span
+            class="shortcut-name"
+            (click)="openUrl(shortcut)"
+            title="{{ shortcut.url }}"
+          >{{ shortcut.name }}</span>
+        }
+
+        <button
+          class="shortcut-edit-btn"
+          (click)="startEdit(shortcut)"
+          title="Rename"
+          aria-label="Rename {{ shortcut.name }}"
+        >✎</button>
+
+        <button
+          class="shortcut-delete-btn"
+          (click)="deleteShortcut($event, shortcut.id)"
+          title="Delete"
+          aria-label="Delete {{ shortcut.name }}"
+        >✕</button>
+      </div>
+    }
+
+    @if (service.shortcuts().length === 0) {
+      <p class="shortcuts-empty">No shortcuts yet</p>
+    }
+  </div>
+
+  <div class="add-shortcut">
+    <input
+      class="add-shortcut-input"
+      [class.loading]="isAdding()"
+      [value]="addUrl()"
+      (input)="addUrl.set($any($event.target).value)"
+      (keydown)="onAddKeydown($event)"
+      [disabled]="isAdding()"
+      placeholder="Paste URL and press ↵"
+    />
+  </div>
+</aside>

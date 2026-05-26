@@ -1,0 +1,13 @@
+services:
+  dashboard:
+    build: .
+    ports:
+      - "5900:8080"
+    volumes:
+      - sessions-data:/data
+    environment:
+      - DB_PATH=/data/sessions.db
+    restart: always
+
+volumes:
+  sessions-data:
