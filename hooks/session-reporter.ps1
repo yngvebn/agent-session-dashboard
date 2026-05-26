@@ -18,7 +18,8 @@ if (-not $sessionId) { exit 0 }
 
 # Throttle heartbeats: skip if last POST was <10s ago
 $isHeartbeat = $Event -in @("heartbeat", "subagent-start")
-$throttleFile = "$env:TEMP\claude-hook-$sessionId.txt"
+$tmpDir = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { "/tmp" }
+$throttleFile = Join-Path $tmpDir "claude-hook-$sessionId.txt"
 if ($isHeartbeat -and (Test-Path $throttleFile)) {
     $lastWrite = (Get-Item $throttleFile).LastWriteTime
     if ((Get-Date) - $lastWrite -lt [TimeSpan]::FromSeconds(10)) {

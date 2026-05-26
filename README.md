@@ -41,9 +41,11 @@ pwsh -File hooks/install.ps1
 ```
 
 This will:
-- Copy `hooks/session-reporter.ps1` → `~/.claude/hooks/session-reporter.ps1`
+- Copy `session-reporter.ps1` and `session-reporter.sh` → `~/.claude/hooks/`
 - Patch hooks into `~/.claude/settings.json` (Claude Code)
 - Write `~/.copilot/hooks/session-dashboard.json` (GitHub Copilot)
+
+**Windows** uses `session-reporter.ps1` (via `pwsh`). **Linux/macOS** uses `session-reporter.sh` (via `bash`, requires `jq` and `curl`). The Copilot config includes both so it works on any OS.
 
 > **Restart Claude Code and VS Code** after installing for hooks to take effect.
 

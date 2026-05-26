@@ -1,25 +1,47 @@
-# Installs the session-reporter hook into ~/.claude/ and ~/.copilot/hooks/
+# Installs session-reporter hooks for Claude Code and GitHub Copilot.
+# Cross-platform: Windows (pwsh + session-reporter.ps1), Linux/macOS (bash + session-reporter.sh)
 # Run once: pwsh -File hooks/install.ps1
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$sourceScript = Join-Path $scriptDir "session-reporter.ps1"
+$scriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$homeDir    = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+$hooksDir   = Join-Path $homeDir ".claude/hooks"
 
-# ── Copy hook script ──────────────────────────────────────────────────────────
-
-$hooksDir = Join-Path $env:USERPROFILE ".claude\hooks"
 New-Item -ItemType Directory -Force $hooksDir | Out-Null
-Copy-Item $sourceScript (Join-Path $hooksDir "session-reporter.ps1") -Force
-$hookScript = Join-Path $hooksDir "session-reporter.ps1"
 
-# ── Build command strings ─────────────────────────────────────────────────────
+# ── Copy hook scripts ─────────────────────────────────────────────────────────
 
-$heartbeatCmd    = "pwsh -NonInteractive -File `"$hookScript`" -Event heartbeat"
-$closedCmd       = "pwsh -NonInteractive -File `"$hookScript`" -Event closed"
-$startedCmd      = "pwsh -NonInteractive -File `"$hookScript`" -Event started"
-$subagentCmd     = "pwsh -NonInteractive -File `"$hookScript`" -Event subagent-start"
-$notificationCmd = "pwsh -NonInteractive -File `"$hookScript`" -Event notification"
-$wtCreateCmd     = "pwsh -NonInteractive -File `"$hookScript`" -Event worktree-create"
-$wtRemoveCmd     = "pwsh -NonInteractive -File `"$hookScript`" -Event worktree-remove"
+Copy-Item (Join-Path $scriptDir "session-reporter.ps1") (Join-Path $hooksDir "session-reporter.ps1") -Force
+
+$shScript = Join-Path $scriptDir "session-reporter.sh"
+if (Test-Path $shScript) {
+    Copy-Item $shScript (Join-Path $hooksDir "session-reporter.sh") -Force
+    if ($IsLinux -or $IsMacOS) {
+        chmod +x (Join-Path $hooksDir "session-reporter.sh")
+    }
+}
+
+# ── Build command strings (OS-appropriate) ────────────────────────────────────
+
+$psScript = Join-Path $hooksDir "session-reporter.ps1"
+$bashScript = Join-Path $hooksDir "session-reporter.sh"
+
+if ($IsWindows -or (-not $IsLinux -and -not $IsMacOS)) {
+    $heartbeatCmd    = "pwsh -NonInteractive -File `"$psScript`" -Event heartbeat"
+    $closedCmd       = "pwsh -NonInteractive -File `"$psScript`" -Event closed"
+    $startedCmd      = "pwsh -NonInteractive -File `"$psScript`" -Event started"
+    $subagentCmd     = "pwsh -NonInteractive -File `"$psScript`" -Event subagent-start"
+    $notificationCmd = "pwsh -NonInteractive -File `"$psScript`" -Event notification"
+    $wtCreateCmd     = "pwsh -NonInteractive -File `"$psScript`" -Event worktree-create"
+    $wtRemoveCmd     = "pwsh -NonInteractive -File `"$psScript`" -Event worktree-remove"
+} else {
+    $heartbeatCmd    = "bash `"$bashScript`" heartbeat"
+    $closedCmd       = "bash `"$bashScript`" closed"
+    $startedCmd      = "bash `"$bashScript`" started"
+    $subagentCmd     = "bash `"$bashScript`" subagent-start"
+    $notificationCmd = "bash `"$bashScript`" notification"
+    $wtCreateCmd     = "bash `"$bashScript`" worktree-create"
+    $wtRemoveCmd     = "bash `"$bashScript`" worktree-remove"
+}
 
 # ── Claude Code (~/.claude/settings.json) ────────────────────────────────────
 
@@ -53,7 +75,7 @@ $claudeHookConfig = @{
     )
 }
 
-$claudeSettingsPath = Join-Path $env:USERPROFILE ".claude\settings.json"
+$claudeSettingsPath = Join-Path $homeDir ".claude/settings.json"
 if (Test-Path $claudeSettingsPath) {
     $claudeSettings = Get-Content $claudeSettingsPath -Raw | ConvertFrom-Json -AsHashtable
 } else {
@@ -66,29 +88,57 @@ Write-Host "[Claude Code] hooks installed → $claudeSettingsPath"
 
 # ── GitHub Copilot (~/.copilot/hooks/session-dashboard.json) ─────────────────
 
-$copilotHooksDir = Join-Path $env:USERPROFILE ".copilot\hooks"
+$copilotHooksDir = Join-Path $homeDir ".copilot/hooks"
 New-Item -ItemType Directory -Force $copilotHooksDir | Out-Null
+
+# Copilot supports per-OS command overrides in the same config file
+$psHeartbeat    = "pwsh -NonInteractive -File `"$psScript`" -Event heartbeat"
+$psClosed       = "pwsh -NonInteractive -File `"$psScript`" -Event closed"
+$psStarted      = "pwsh -NonInteractive -File `"$psScript`" -Event started"
+$psSubagent     = "pwsh -NonInteractive -File `"$psScript`" -Event subagent-start"
+$bashHeartbeat  = "bash `"$bashScript`" heartbeat"
+$bashClosed     = "bash `"$bashScript`" closed"
+$bashStarted    = "bash `"$bashScript`" started"
+$bashSubagent   = "bash `"$bashScript`" subagent-start"
 
 $copilotHookConfig = @{
     hooks = @{
-        SessionStart = @(
-            @{ type = "command"; command = $startedCmd; timeout = 5 }
-        )
-        Stop = @(
-            @{ type = "command"; command = $closedCmd; timeout = 5 }
-        )
-        PostToolUse = @(
-            @{ type = "command"; command = $heartbeatCmd; timeout = 5 }
-        )
-        UserPromptSubmit = @(
-            @{ type = "command"; command = $heartbeatCmd; timeout = 5 }
-        )
-        SubagentStart = @(
-            @{ type = "command"; command = $subagentCmd; timeout = 5 }
-        )
-        SubagentStop = @(
-            @{ type = "command"; command = $heartbeatCmd; timeout = 5 }
-        )
+        SessionStart = @(@{
+            type    = "command"
+            command = $bashStarted
+            windows = $psStarted
+            timeout = 5
+        })
+        Stop = @(@{
+            type    = "command"
+            command = $bashClosed
+            windows = $psClosed
+            timeout = 5
+        })
+        PostToolUse = @(@{
+            type    = "command"
+            command = $bashHeartbeat
+            windows = $psHeartbeat
+            timeout = 5
+        })
+        UserPromptSubmit = @(@{
+            type    = "command"
+            command = $bashHeartbeat
+            windows = $psHeartbeat
+            timeout = 5
+        })
+        SubagentStart = @(@{
+            type    = "command"
+            command = $bashSubagent
+            windows = $psSubagent
+            timeout = 5
+        })
+        SubagentStop = @(@{
+            type    = "command"
+            command = $bashHeartbeat
+            windows = $psHeartbeat
+            timeout = 5
+        })
     }
 }
 
@@ -100,5 +150,6 @@ Write-Host "[Copilot]      hooks installed → $copilotConfigPath"
 # ── Done ──────────────────────────────────────────────────────────────────────
 
 Write-Host ""
-Write-Host "Hook script: $hookScript"
+Write-Host "Hook script (ps):   $psScript"
+Write-Host "Hook script (bash): $bashScript"
 Write-Host "Restart Claude Code and VS Code for hooks to take effect."
