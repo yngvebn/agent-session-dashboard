@@ -36,16 +36,22 @@ The hooks script posts session events from every Claude Code session to the dash
 
 **Run once from the repo root:**
 
+```bash
+# macOS / Linux
+bash hooks/install.sh
+```
+
 ```powershell
+# Windows
 pwsh -File hooks/install.ps1
 ```
 
-This will:
+Both do the same thing:
 - Copy `session-reporter.ps1` and `session-reporter.sh` → `~/.claude/hooks/`
 - Patch hooks into `~/.claude/settings.json` (Claude Code)
 - Write `~/.copilot/hooks/session-dashboard.json` (GitHub Copilot)
 
-**Windows** uses `session-reporter.ps1` (via `pwsh`). **Linux/macOS** uses `session-reporter.sh` (via `bash`, requires `jq` and `curl`). The Copilot config includes both so it works on any OS.
+**Linux/macOS** (`install.sh`) requires `jq` and `curl`. **Windows** (`install.ps1`) requires `pwsh`. The Copilot config includes both script variants so it works on any OS.
 
 > **Restart Claude Code and VS Code** after installing for hooks to take effect.
 
