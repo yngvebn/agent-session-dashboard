@@ -40471,7 +40471,7 @@ var ShortcutSidebarComponent = class _ShortcutSidebarComponent {
     }
   }
   openUrl(shortcut) {
-    window.open(shortcut.url.startsWith("http") ? shortcut.url : `https://${shortcut.url}`, "_blank");
+    window.location.href = shortcut.url.startsWith("http") ? shortcut.url : `https://${shortcut.url}`;
   }
   // ── Drag & Drop ───────────────────────────────────────────────────────────
   onDragStart(event, index) {

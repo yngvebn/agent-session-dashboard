@@ -34,7 +34,7 @@ export class ShortcutSidebarComponent {
   }
 
   openUrl(shortcut: Shortcut): void {
-    window.open(shortcut.url.startsWith('http') ? shortcut.url : `https://${shortcut.url}`, '_blank');
+    window.location.href = shortcut.url.startsWith('http') ? shortcut.url : `https://${shortcut.url}`;
   }
 
   // ── Drag & Drop ───────────────────────────────────────────────────────────
