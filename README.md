@@ -42,13 +42,14 @@ pwsh -File hooks/install.ps1
 
 This will:
 - Copy `hooks/session-reporter.ps1` → `~/.claude/hooks/session-reporter.ps1`
-- Patch `hooks` into each Claude account's `settings.json` (`~/.claude-aurum/` and `~/.claude-gmail/`)
+- Patch hooks into `~/.claude/settings.json` (Claude Code)
+- Write `~/.copilot/hooks/session-dashboard.json` (GitHub Copilot)
 
-> **Restart Claude Code** after installing for hooks to take effect.
+> **Restart Claude Code and VS Code** after installing for hooks to take effect.
 
 ### What the install script patches
 
-The installer writes these hook events into each account's `settings.json`:
+**Claude Code** (`~/.claude/settings.json`):
 
 | Hook | Event sent | Purpose |
 |---|---|---|
@@ -61,6 +62,17 @@ The installer writes these hook events into each account's `settings.json`:
 | `Notification` | `notification` | Surface last Claude message |
 | `WorktreeCreate` | `worktree-create` | Track active worktree |
 | `WorktreeRemove` | `worktree-remove` | Clear worktree on removal |
+
+**GitHub Copilot** (`~/.copilot/hooks/session-dashboard.json`):
+
+| Hook | Event sent | Purpose |
+|---|---|---|
+| `SessionStart` | `started` | Register new session |
+| `Stop` | `closed` | Mark session closed |
+| `PostToolUse` | `heartbeat` | Keep session alive (throttled 10s) |
+| `UserPromptSubmit` | `heartbeat` | Heartbeat on each prompt |
+| `SubagentStart` | `subagent-start` | Track subagent activity |
+| `SubagentStop` | `heartbeat` | Heartbeat after subagent |
 
 ### Manual hook install (single account)
 

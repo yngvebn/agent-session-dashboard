@@ -10,7 +10,8 @@ try {
     exit 0
 }
 
-$sessionId = $inputJson.session_id
+# Claude uses session_id, Copilot uses sessionId
+$sessionId = if ($inputJson.session_id) { $inputJson.session_id } else { $inputJson.sessionId }
 $cwd = $inputJson.cwd
 
 if (-not $sessionId) { exit 0 }
