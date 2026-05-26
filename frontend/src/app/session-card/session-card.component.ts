@@ -74,6 +74,10 @@ export class SessionCardComponent implements OnInit, OnDestroy {
     }
   }
 
+  get statusLabel(): string {
+    return this.session.status === 'crashed' ? 'inactive' : this.session.status;
+  }
+
   private relativeTime(isoTimestamp: string, now: number): string {
     const then = new Date(isoTimestamp).getTime();
     const diffMs = now - then;

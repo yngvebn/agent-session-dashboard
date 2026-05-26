@@ -2,7 +2,7 @@
   <article class="session-card compact-card">
     <span class="session-name" [title]="session.workingDir || session.name">{{ session.name }}</span>
     <span class="status-badge" [attr.data-status]="session.status">
-      {{ statusIcon }} {{ session.status | uppercase }}
+      {{ statusIcon }} {{ statusLabel | uppercase }}
     </span>
     <span class="compact-time">{{ lastSeenAgo() }}</span>
     <div class="footer-actions">
@@ -19,7 +19,7 @@
     <header class="card-header">
       <span class="session-name" [title]="session.workingDir || session.name">{{ session.name }}</span>
       <span class="status-badge" [attr.data-status]="session.status">
-        {{ statusIcon }} {{ session.status | uppercase }}
+        {{ statusIcon }} {{ statusLabel | uppercase }}
       </span>
     </header>
 
