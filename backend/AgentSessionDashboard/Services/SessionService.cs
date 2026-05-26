@@ -100,7 +100,8 @@ public class SessionService(SessionDbContext db, SseService sseService)
             existing.Pid = payload.Pid != 0 ? payload.Pid : existing.Pid;
             existing.WorkingDir = payload.WorkingDir ?? existing.WorkingDir;
             if (payload.Branch != null) existing.Branch = payload.Branch;
-            if (existing.Status == "idle" || existing.Status == "crashed")
+            if (existing.Status == "idle" || existing.Status == "crashed" ||
+                (payload.EventType == "started" && existing.Status == "closed"))
                 existing.Status = "running";
         }
 
