@@ -43,10 +43,28 @@ public class SseService
             session.LastSeen,
             session.StartedAt,
             session.Pid,
-            session.WorkingDir
+            session.WorkingDir,
+            session.LastActivity,
+            session.Worktree,
+            session.Branch,
+            session.TokensIn,
+            session.TokensOut
         }, _jsonOptions);
 
         var message = $"event: session-update\ndata: {payload}\n\n";
+        Broadcast(message);
+    }
+
+    public void BroadcastSessionEvent(SessionEvent ev)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            ev.Id,
+            ev.SessionId,
+            ev.Timestamp,
+            ev.Message
+        }, _jsonOptions);
+        var message = $"event: session-event\ndata: {payload}\n\n";
         Broadcast(message);
     }
 

@@ -1,4 +1,4 @@
-import { Component, inject, computed, signal } from '@angular/core';
+import { Component, inject, computed, signal, effect } from '@angular/core';
 import { SessionSseService } from './services/session-sse.service';
 import { SessionCardComponent } from './session-card/session-card.component';
 import { ShortcutSidebarComponent } from './shortcut-sidebar/shortcut-sidebar.component';
@@ -20,6 +20,37 @@ export class AppComponent {
   private sseService = inject(SessionSseService);
 
   readonly connected = this.sseService.connected;
+  readonly notificationPermission = this.sseService.notificationPermission;
+  readonly soundEnabled = this.sseService.soundEnabled;
+
+  requestNotifications(): void {
+    this.sseService.requestNotifications();
+  }
+
+  toggleSound(): void {
+    this.sseService.toggleSound();
+  }
+
+  private sparklineHistory = signal<number[]>([]);
+
+  constructor() {
+    effect(() => {
+      const count = this.sseService.sessions().filter(s => s.status !== 'closed').length;
+      this.sparklineHistory.update(h => [...h.slice(-59), count]);
+    });
+  }
+
+  readonly sparklinePoints = computed(() => {
+    const h = this.sparklineHistory();
+    if (h.length < 2) return '';
+    const max = Math.max(...h, 1);
+    const w = 80, height = 24;
+    return h.map((v, i) => {
+      const x = (i / (h.length - 1)) * w;
+      const y = height - (v / max) * (height - 4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+  });
 
   readonly activeSessions = computed(() => {
     const sessions = this.sseService.sessions().filter(s => s.status !== 'closed');

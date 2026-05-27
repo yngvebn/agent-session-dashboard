@@ -27,6 +27,7 @@ $bashScript = Join-Path $hooksDir "session-reporter.sh"
 
 if ($IsWindows -or (-not $IsLinux -and -not $IsMacOS)) {
     $heartbeatCmd    = "pwsh -NonInteractive -File `"$psScript`" -Event heartbeat"
+    $stopCmd         = "pwsh -NonInteractive -File `"$psScript`" -Event stop"
     $closedCmd       = "pwsh -NonInteractive -File `"$psScript`" -Event closed"
     $startedCmd      = "pwsh -NonInteractive -File `"$psScript`" -Event started"
     $subagentCmd     = "pwsh -NonInteractive -File `"$psScript`" -Event subagent-start"
@@ -35,6 +36,7 @@ if ($IsWindows -or (-not $IsLinux -and -not $IsMacOS)) {
     $wtRemoveCmd     = "pwsh -NonInteractive -File `"$psScript`" -Event worktree-remove"
 } else {
     $heartbeatCmd    = "bash `"$bashScript`" heartbeat"
+    $stopCmd         = "bash `"$bashScript`" stop"
     $closedCmd       = "bash `"$bashScript`" closed"
     $startedCmd      = "bash `"$bashScript`" started"
     $subagentCmd     = "bash `"$bashScript`" subagent-start"
@@ -56,7 +58,7 @@ $claudeHookConfig = @{
         @{ matcher = ""; hooks = @(@{ type = "command"; command = $heartbeatCmd }) }
     )
     Stop = @(
-        @{ hooks = @(@{ type = "command"; command = $heartbeatCmd }) }
+        @{ hooks = @(@{ type = "command"; command = $stopCmd }) }
     )
     SubagentStart = @(
         @{ hooks = @(@{ type = "command"; command = $subagentCmd }) }

@@ -2,6 +2,8 @@ using AgentSessionDashboard.Data;
 using AgentSessionDashboard.Models;
 using Microsoft.EntityFrameworkCore;
 
+
+
 namespace AgentSessionDashboard.Services;
 
 public class SessionService(SessionDbContext db, SseService sseService)
@@ -71,6 +73,26 @@ public class SessionService(SessionDbContext db, SseService sseService)
                     existing.LastSeen = payload.Timestamp ?? now;
                     if (existing.Status == "idle" || existing.Status == "crashed")
                         existing.Status = "running";
+
+                    var ev = new SessionEvent
+                    {
+                        SessionId = existing.SessionId,
+                        Timestamp = payload.Timestamp ?? now,
+                        Message = payload.Message
+                    };
+                    db.SessionEvents.Add(ev);
+                    await db.SaveChangesAsync();
+                    sseService.BroadcastSessionUpdate(existing);
+                    sseService.BroadcastSessionEvent(ev);
+                }
+                return;
+
+            case "stop":
+                if (existing != null && (payload.TokensIn > 0 || payload.TokensOut > 0))
+                {
+                    existing.TokensIn += payload.TokensIn;
+                    existing.TokensOut += payload.TokensOut;
+                    existing.LastSeen = payload.Timestamp ?? now;
                     await db.SaveChangesAsync();
                     sseService.BroadcastSessionUpdate(existing);
                 }
@@ -102,7 +124,10 @@ public class SessionService(SessionDbContext db, SseService sseService)
             if (payload.Branch != null) existing.Branch = payload.Branch;
             if (existing.Status == "idle" || existing.Status == "crashed" ||
                 (payload.EventType == "started" && existing.Status == "closed"))
+            {
                 existing.Status = "running";
+                existing.LastActivity = null;
+            }
         }
 
         await db.SaveChangesAsync();
@@ -122,4 +147,6 @@ public class HookPayload
     public string? Message { get; set; }
     public string? WorktreePath { get; set; }
     public string? Branch { get; set; }
+    public long TokensIn { get; set; }
+    public long TokensOut { get; set; }
 }

@@ -1,11 +1,11 @@
 import { Component, Input, OnDestroy, OnInit, signal, computed, inject, input } from '@angular/core';
-import { UpperCasePipe } from '@angular/common';
-import { Session, SessionSseService } from '../services/session-sse.service';
+import { UpperCasePipe, DatePipe } from '@angular/common';
+import { Session, SessionEvent, SessionSseService } from '../services/session-sse.service';
 
 @Component({
   selector: 'app-session-card',
   standalone: true,
-  imports: [UpperCasePipe],
+  imports: [UpperCasePipe, DatePipe],
   templateUrl: './session-card.component.html',
   styleUrl: './session-card.component.scss',
 })
@@ -17,6 +17,36 @@ export class SessionCardComponent implements OnInit, OnDestroy {
   private now = signal(Date.now());
   private intervalId: ReturnType<typeof setInterval> | null = null;
   copied = signal(false);
+  timelineOpen = signal(false);
+
+  readonly events = computed<SessionEvent[]>(() => {
+    const map = this.sseService.sessionEvents();
+    return map.get(this.session.sessionId) ?? [];
+  });
+
+  readonly cost = computed(() => {
+    const inCost = (this.session.tokensIn / 1_000_000) * 3;
+    const outCost = (this.session.tokensOut / 1_000_000) * 15;
+    return inCost + outCost;
+  });
+
+  get hasTokens(): boolean {
+    return this.session.tokensIn > 0 || this.session.tokensOut > 0;
+  }
+
+  toggleTimeline(): void {
+    const willOpen = !this.timelineOpen();
+    this.timelineOpen.set(willOpen);
+    if (willOpen) {
+      this.sseService.loadEvents(this.session.sessionId);
+    }
+  }
+
+  formatTokens(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
+    return `${n}`;
+  }
 
   get isDismissable(): boolean {
     return this.session.status === 'closed' || this.session.status === 'crashed';
@@ -49,8 +79,22 @@ export class SessionCardComponent implements OnInit, OnDestroy {
     setTimeout(() => this.copied.set(false), 2000);
   }
 
+  elapsedDuration = computed(() => {
+    const elapsed = Math.max(0, this.now() - new Date(this.session.startedAt).getTime());
+    const s = Math.floor(elapsed / 1000) % 60;
+    const m = Math.floor(elapsed / 60000) % 60;
+    const h = Math.floor(elapsed / 3600000);
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  });
+
+  get showDuration(): boolean {
+    return this.session.status === 'running' || this.session.status === 'idle';
+  }
+
   ngOnInit(): void {
-    this.intervalId = setInterval(() => this.now.set(Date.now()), 30_000);
+    this.intervalId = setInterval(() => this.now.set(Date.now()), 1_000);
   }
 
   ngOnDestroy(): void {

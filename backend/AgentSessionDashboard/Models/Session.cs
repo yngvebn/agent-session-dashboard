@@ -15,4 +15,6 @@ public class Session
     public string? LastActivity { get; set; }
     public string? Worktree { get; set; }
     public string? Branch { get; set; }
+    public long TokensIn { get; set; }
+    public long TokensOut { get; set; }
 }

@@ -42,15 +42,42 @@
         <span class="label">last seen</span>
         <span class="value">{{ lastSeenAgo() }}</span>
       </div>
-      <div class="time-row">
-        <span class="label">started</span>
-        <span class="value">{{ startedAgo() }}</span>
-      </div>
+      @if (showDuration) {
+        <div class="time-row">
+          <span class="label">duration</span>
+          <span class="value duration-live">{{ elapsedDuration() }}</span>
+        </div>
+      } @else {
+        <div class="time-row">
+          <span class="label">started</span>
+          <span class="value">{{ startedAgo() }}</span>
+        </div>
+      }
     </div>
 
+    @if (hasTokens) {
+      <div class="token-row">
+        <span class="token-label">tokens</span>
+        <span class="token-value">{{ formatTokens(session.tokensIn) }} in / {{ formatTokens(session.tokensOut) }} out</span>
+        <span class="token-cost">${{ cost().toFixed(4) }}</span>
+      </div>
+    }
+
     @if (session.lastActivity) {
-      <div class="activity-row" [title]="session.lastActivity">
+      <div class="activity-row" [title]="session.lastActivity" (click)="toggleTimeline()" style="cursor:pointer">
         <span class="activity-text">{{ session.lastActivity }}</span>
+        <span class="timeline-toggle">{{ timelineOpen() ? '▲' : '▼' }}</span>
+      </div>
+    }
+
+    @if (timelineOpen() && events().length > 0) {
+      <div class="timeline">
+        @for (ev of events(); track ev.id) {
+          <div class="timeline-entry">
+            <span class="timeline-time">{{ ev.timestamp | date:'HH:mm:ss' }}</span>
+            <span class="timeline-msg">{{ ev.message }}</span>
+          </div>
+        }
       </div>
     }
 

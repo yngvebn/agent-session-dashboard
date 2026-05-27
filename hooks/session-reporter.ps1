@@ -76,6 +76,16 @@ if ($Event -eq "notification" -and $inputJson.message) {
 if ($Event -eq "worktree-create" -and $inputJson.worktree_path) {
     $body["worktreePath"] = $inputJson.worktree_path
 }
+if ($Event -eq "stop") {
+    $tokensIn  = 0
+    $tokensOut = 0
+    if ($inputJson.usage) {
+        $tokensIn  = [int]($inputJson.usage.input_tokens  + $inputJson.usage.cache_read_input_tokens + $inputJson.usage.cache_creation_input_tokens)
+        $tokensOut = [int]($inputJson.usage.output_tokens)
+    }
+    $body["tokensIn"]  = $tokensIn
+    $body["tokensOut"] = $tokensOut
+}
 
 try {
     Invoke-RestMethod `

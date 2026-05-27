@@ -7,6 +7,7 @@ public class SessionDbContext(DbContextOptions<SessionDbContext> options) : DbCo
 {
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<Shortcut> Shortcuts => Set<Shortcut>();
+    public DbSet<SessionEvent> SessionEvents => Set<SessionEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

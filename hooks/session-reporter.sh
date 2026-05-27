@@ -43,6 +43,16 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ] && command -v jq &>/de
     [ -n "$CUSTOM_TITLE" ] && SESSION_NAME="$CUSTOM_TITLE" || { [ -n "$AI_TITLE" ] && SESSION_NAME="$AI_TITLE"; }
 fi
 
+TOKENS_IN=0
+TOKENS_OUT=0
+if [ "$EVENT" = "stop" ] && command -v jq &>/dev/null; then
+    INPUT_T=$(echo "$INPUT" | jq -r '.usage.input_tokens // 0')
+    CACHE_READ=$(echo "$INPUT" | jq -r '.usage.cache_read_input_tokens // 0')
+    CACHE_CREATE=$(echo "$INPUT" | jq -r '.usage.cache_creation_input_tokens // 0')
+    TOKENS_IN=$(( INPUT_T + CACHE_READ + CACHE_CREATE ))
+    TOKENS_OUT=$(echo "$INPUT" | jq -r '.usage.output_tokens // 0')
+fi
+
 BODY=$(jq -n \
     --arg sessionId "$SESSION_ID" \
     --arg name "$SESSION_NAME" \
@@ -51,7 +61,9 @@ BODY=$(jq -n \
     --arg workingDir "${CWD:-}" \
     --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg branch "$BRANCH" \
-    '{sessionId: $sessionId, name: $name, event: $event, pid: $pid, workingDir: $workingDir, timestamp: $timestamp}
+    --argjson tokensIn "$TOKENS_IN" \
+    --argjson tokensOut "$TOKENS_OUT" \
+    '{sessionId: $sessionId, name: $name, event: $event, pid: $pid, workingDir: $workingDir, timestamp: $timestamp, tokensIn: $tokensIn, tokensOut: $tokensOut}
      + (if $branch != "" then {branch: $branch} else {} end)')
 
 curl -sf -X POST \

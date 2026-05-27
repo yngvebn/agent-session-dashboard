@@ -47,6 +47,19 @@ using (var scope = app.Services.CreateScope())
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"Branch\" TEXT NULL"); } catch { }
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"LastActivity\" TEXT NULL"); } catch { }
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"Worktree\" TEXT NULL"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"TokensIn\" INTEGER NOT NULL DEFAULT 0"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"TokensOut\" INTEGER NOT NULL DEFAULT 0"); } catch { }
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "SessionEvents" (
+            "Id" INTEGER NOT NULL CONSTRAINT "PK_SessionEvents" PRIMARY KEY AUTOINCREMENT,
+            "SessionId" TEXT NOT NULL,
+            "Timestamp" TEXT NOT NULL,
+            "Message" TEXT NOT NULL
+        )
+    """);
+    db.Database.ExecuteSqlRaw("""
+        CREATE INDEX IF NOT EXISTS "IX_SessionEvents_SessionId" ON "SessionEvents" ("SessionId")
+    """);
     db.Database.ExecuteSqlRaw("""
         CREATE TABLE IF NOT EXISTS "Shortcuts" (
             "Id" INTEGER NOT NULL CONSTRAINT "PK_Shortcuts" PRIMARY KEY AUTOINCREMENT,
@@ -158,6 +171,18 @@ app.MapGet("/api/sessions/stream", async (
         sseService.RemoveClient(clientId);
         logger.LogInformation("SSE client {ClientId} removed. Total: {Count}", clientId, sseService.ClientCount);
     }
+});
+
+// GET /api/sessions/{id}/events — last 50 activity events for a session
+app.MapGet("/api/sessions/{id}/events", async (string id, SessionDbContext db) =>
+{
+    var events = await db.SessionEvents
+        .Where(e => e.SessionId == id)
+        .OrderByDescending(e => e.Timestamp)
+        .Take(50)
+        .OrderBy(e => e.Timestamp)
+        .ToListAsync();
+    return Results.Ok(events);
 });
 
 // ── Shortcuts endpoints ───────────────────────────────────────────────────────

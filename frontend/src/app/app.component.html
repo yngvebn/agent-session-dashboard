@@ -1,9 +1,42 @@
 <div class="dashboard">
   <header class="dashboard-header">
     <h1 class="dashboard-title">Agent Sessions</h1>
-    <div class="connection-indicator" [class.connected]="connected()" [class.disconnected]="!connected()">
-      <span class="indicator-dot"></span>
-      <span class="indicator-label">{{ connected() ? 'Live' : 'Reconnecting...' }}</span>
+    <div class="header-right">
+      <button
+        class="notif-btn"
+        [class.muted]="!soundEnabled()"
+        [title]="soundEnabled() ? 'Mute sounds' : 'Unmute sounds'"
+        (click)="toggleSound()"
+      >{{ soundEnabled() ? '🔊' : '🔇' }}</button>
+
+      @if (notificationPermission() !== 'denied') {
+        <button
+          class="notif-btn"
+          [class.granted]="notificationPermission() === 'granted'"
+          [title]="notificationPermission() === 'granted' ? 'Notifications enabled' : 'Enable notifications'"
+          [disabled]="notificationPermission() === 'granted'"
+          (click)="requestNotifications()"
+        >
+          {{ notificationPermission() === 'granted' ? '🔔' : '🔕' }}
+        </button>
+      }
+      @if (sparklinePoints()) {
+        <svg class="sparkline" viewBox="0 0 80 24" preserveAspectRatio="none" aria-hidden="true">
+          <polyline
+            [attr.points]="sparklinePoints()"
+            fill="none"
+            stroke="var(--status-running-text)"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+            opacity="0.5"
+          />
+        </svg>
+      }
+      <div class="connection-indicator" [class.connected]="connected()" [class.disconnected]="!connected()">
+        <span class="indicator-dot"></span>
+        <span class="indicator-label">{{ connected() ? 'Live' : 'Reconnecting...' }}</span>
+      </div>
     </div>
   </header>
 
