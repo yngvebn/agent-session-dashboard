@@ -11,7 +11,7 @@ public class SessionStatusWorker(
     ILogger<SessionStatusWorker> logger) : BackgroundService
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan IdleThreshold = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan IdleThreshold = TimeSpan.FromSeconds(90);
     private static readonly TimeSpan CrashedThreshold = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
 

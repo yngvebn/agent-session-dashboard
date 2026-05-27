@@ -217,7 +217,7 @@ export class SessionSseService implements OnDestroy {
       const label = session.name || session.sessionId;
       if (session.status === 'crashed') {
         this.cancelIdleTimer(session.sessionId);
-      } else if (session.status === 'idle' && existing.status === 'running') {
+      } else if (session.status === 'idle' && existing.status === 'running' && session.lastActivity) {
         this.scheduleIdleAlert(session.sessionId, label);
       } else if (session.status === 'running') {
         this.cancelIdleTimer(session.sessionId);
