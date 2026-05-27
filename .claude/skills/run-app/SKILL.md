@@ -19,6 +19,7 @@ A full image rebuild is required on every code change (Dockerfile builds Angular
 
 ```powershell
 docker compose down --remove-orphans
+$env:GIT_SHA = (git rev-parse HEAD)
 docker compose build --no-cache
 docker compose up -d
 ```

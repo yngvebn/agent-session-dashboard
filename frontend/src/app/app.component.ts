@@ -1,5 +1,6 @@
 import { Component, inject, computed, signal, effect } from '@angular/core';
 import { SessionSseService } from './services/session-sse.service';
+import { VersionService } from './services/version.service';
 import { SessionCardComponent } from './session-card/session-card.component';
 import { ShortcutSidebarComponent } from './shortcut-sidebar/shortcut-sidebar.component';
 
@@ -18,6 +19,10 @@ const STATUS_RANK: Record<string, number> = {
 })
 export class AppComponent {
   private sseService = inject(SessionSseService);
+  private versionService = inject(VersionService);
+
+  readonly updateAvailable = this.versionService.updateAvailable;
+  dismissUpdate(): void { this.versionService.dismiss(); }
 
   readonly connected = this.sseService.connected;
   readonly notificationPermission = this.sseService.notificationPermission;

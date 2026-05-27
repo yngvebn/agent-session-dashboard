@@ -22,5 +22,7 @@ COPY --from=backend-build /publish ./
 VOLUME ["/data"]
 ENV DB_PATH=/data/sessions.db
 ENV ASPNETCORE_URLS=http://+:8080
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "AgentSessionDashboard.dll"]

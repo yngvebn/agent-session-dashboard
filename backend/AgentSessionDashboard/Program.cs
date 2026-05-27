@@ -115,6 +115,10 @@ app.MapPost("/api/sessions/event", async (
     return Results.Ok();
 });
 
+// GET /api/version — returns the git SHA baked in at build time
+var gitSha = Environment.GetEnvironmentVariable("GIT_SHA") ?? "unknown";
+app.MapGet("/api/version", () => Results.Ok(new { sha = gitSha }));
+
 // GET /api/sessions — returns all sessions not older than 7 days
 app.MapGet("/api/sessions", async (SessionService sessionService) =>
 {

@@ -40,6 +40,14 @@
     </div>
   </header>
 
+  @if (updateAvailable()) {
+    <div class="update-banner">
+      <span>Update available —</span>
+      <code>git pull &amp;&amp; docker compose up -d --build</code>
+      <button class="update-dismiss" (click)="dismissUpdate()">✕</button>
+    </div>
+  }
+
   <div class="dashboard-body">
     <main class="sessions-area">
       <div class="sessions-grid">

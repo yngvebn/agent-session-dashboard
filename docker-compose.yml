@@ -1,6 +1,9 @@
 services:
   dashboard:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     ports:
       - "5900:8080"
     volumes:

@@ -40,6 +40,40 @@
   letter-spacing: -0.01em;
 }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(187, 128, 9, 0.15);
+  border: 1px solid rgba(187, 128, 9, 0.35);
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--status-idle-text);
+
+  code {
+    font-family: monospace;
+    font-size: 0.78rem;
+    background: rgba(187, 128, 9, 0.12);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    user-select: all;
+  }
+
+  .update-dismiss {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.1rem 0.3rem;
+    line-height: 1;
+
+    &:hover { color: var(--text-primary); }
+  }
+}
+
 .header-right {
   display: flex;
   align-items: center;
