@@ -65,15 +65,8 @@ public class SessionStatusWorker(
                     logger.LogDebug("Session {SessionId} → idle (last seen {Age:F0}s ago).", session.SessionId, age.TotalSeconds);
                     changed.Add(session);
                 }
-                else if (session.Status == "idle" && age > CrashedThreshold)
-                {
-                    if (!IsPidRunning(session.Pid))
-                    {
-                        session.Status = "crashed";
-                        logger.LogInformation("Session {SessionId} → crashed (PID {Pid} not found).", session.SessionId, session.Pid);
-                        changed.Add(session);
-                    }
-                }
+                // Note: idle→crashed transition removed. PID check is unreliable when
+                // the dashboard runs in Docker (host PIDs are invisible inside the container).
             }
 
             // Persist before broadcasting so clients always see saved state

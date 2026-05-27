@@ -72,8 +72,10 @@ export class SessionSseService implements OnDestroy {
     this.cancelIdleTimer(sessionId);
     const timer = setTimeout(() => {
       this.idleTimers.delete(sessionId);
-      this.notify('Session waiting for input', label);
-      this.playSound('idle');
+      if (document.hidden) {
+        this.notify('Session waiting for input', label);
+        this.playSound('idle');
+      }
     }, 20_000);
     this.idleTimers.set(sessionId, timer);
   }
@@ -215,8 +217,6 @@ export class SessionSseService implements OnDestroy {
       const label = session.name || session.sessionId;
       if (session.status === 'crashed') {
         this.cancelIdleTimer(session.sessionId);
-        this.notify('Session crashed', label);
-        this.playSound('crashed');
       } else if (session.status === 'idle' && existing.status === 'running') {
         this.scheduleIdleAlert(session.sessionId, label);
       } else if (session.status === 'running') {
