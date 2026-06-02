@@ -6,10 +6,13 @@ services:
         GIT_SHA: ${GIT_SHA:-unknown}
     ports:
       - "5900:8080"
+    pid: host
     volumes:
       - sessions-data:/data
+      - ${HOME}/.copilot/session-state:/copilot-sessions:ro
     environment:
       - DB_PATH=/data/sessions.db
+      - COPILOT_SESSIONS_PATH=/copilot-sessions
     restart: always
 
 volumes:

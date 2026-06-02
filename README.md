@@ -76,11 +76,13 @@ Both do the same thing:
 | Hook | Event sent | Purpose |
 |---|---|---|
 | `SessionStart` | `started` | Register new session |
-| `Stop` | `closed` | Mark session closed |
+| `Stop` | `heartbeat` | Turn completed (session still open) |
 | `PostToolUse` | `heartbeat` | Keep session alive (throttled 10s) |
 | `UserPromptSubmit` | `heartbeat` | Heartbeat on each prompt |
 | `SubagentStart` | `subagent-start` | Track subagent activity |
 | `SubagentStop` | `heartbeat` | Heartbeat after subagent |
+
+> **Note:** Copilot CLI's `Stop` fires at the end of each agent *turn*, not session end. There is no session-end hook in Copilot CLI; sessions are instead detected as closed via the idle→crashed timeout (PID check).
 
 ### Manual hook install (single account)
 

@@ -40,8 +40,26 @@ if ($cwd) {
     } catch { $branch = $null }
 }
 
-# Extract session title from transcript: custom-title > ai-title > cwd basename
+# Use the real Copilot process PID from the inuse lock file, not the hook script's PID
+$actualPid = $PID
+$homeDir = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+$copilotSessionDir = Join-Path $homeDir ".copilot/session-state/$sessionId"
+if (Test-Path $copilotSessionDir) {
+    $lockFile = Get-ChildItem $copilotSessionDir -Filter "inuse.*.lock" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($lockFile -and $lockFile.Name -match 'inuse\.(\d+)\.lock') {
+        $actualPid = [int]$Matches[1]
+    }
+}
+
+# Extract session title: Copilot workspace.yaml > Claude transcript custom-title/ai-title > cwd basename
 $sessionName = if ($cwd) { Split-Path $cwd -Leaf } else { "unknown" }
+$copilotWorkspace = Join-Path $homeDir ".copilot/session-state/$sessionId/workspace.yaml"
+if (Test-Path $copilotWorkspace) {
+    try {
+        $yamlLine = Get-Content $copilotWorkspace | Where-Object { $_ -match '^name:\s*(.+)$' } | Select-Object -First 1
+        if ($yamlLine -match '^name:\s*(.+)$') { $sessionName = $Matches[1].Trim() }
+    } catch {}
+}
 $transcriptPath = $inputJson.transcript_path
 if ($transcriptPath -and (Test-Path $transcriptPath)) {
     try {
@@ -63,7 +81,7 @@ $body = @{
     sessionId  = $sessionId
     name       = $sessionName
     event      = $Event
-    pid        = $PID
+    pid        = $actualPid
     workingDir = if ($cwd) { $cwd } else { "" }
     timestamp  = (Get-Date -Format "o")
 }
