@@ -12,7 +12,7 @@ public class SessionStatusWorker(
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan IdleThreshold = TimeSpan.FromSeconds(90);
-    private static readonly TimeSpan CrashedThreshold = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan InactiveThreshold = TimeSpan.FromHours(2);
     private static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -65,8 +65,12 @@ public class SessionStatusWorker(
                     logger.LogDebug("Session {SessionId} → idle (last seen {Age:F0}s ago).", session.SessionId, age.TotalSeconds);
                     changed.Add(session);
                 }
-                // Note: idle→crashed transition removed. PID check is unreliable when
-                // the dashboard runs in Docker (host PIDs are invisible inside the container).
+                else if (session.Status == "idle" && age > InactiveThreshold)
+                {
+                    session.Status = "crashed";
+                    logger.LogDebug("Session {SessionId} → inactive (idle for {Age:F1}h).", session.SessionId, age.TotalHours);
+                    changed.Add(session);
+                }
             }
 
             // Persist before broadcasting so clients always see saved state

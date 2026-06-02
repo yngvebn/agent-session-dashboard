@@ -16,6 +16,9 @@
         (drop)="onDrop($event, i)"
         (dragend)="onDragEnd()"
       >
+        @if (i < 9) {
+          <span class="shortcut-key">{{ i + 1 }}</span>
+        }
         <img
           class="shortcut-favicon"
           [src]="faviconUrl(shortcut.url)"

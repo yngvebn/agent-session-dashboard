@@ -14,6 +14,7 @@ export interface Session {
   branch: string | null;
   tokensIn: number;
   tokensOut: number;
+  model: string | null;
 }
 
 export interface SessionEvent {
@@ -43,6 +44,8 @@ export class SessionSseService implements OnDestroy {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private audioCtx: AudioContext | null = null;
   private idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private isLeader = false;
+  private leaderAbort = new AbortController();
 
   private _soundEnabled = signal(localStorage.getItem('soundEnabled') !== 'false');
   readonly soundEnabled = this._soundEnabled.asReadonly();
@@ -54,7 +57,22 @@ export class SessionSseService implements OnDestroy {
   }
 
   constructor() {
+    this.claimLeadership();
     this.loadInitialSessions();
+  }
+
+  private claimLeadership(): void {
+    if (!('locks' in navigator)) {
+      this.isLeader = true;
+      return;
+    }
+    navigator.locks.request('dashboard-leader', { signal: this.leaderAbort.signal }, async () => {
+      this.isLeader = true;
+      await new Promise<void>(resolve => {
+        window.addEventListener('beforeunload', () => resolve(), { once: true });
+      });
+      this.isLeader = false;
+    }).catch(() => {});
   }
 
   async requestNotifications(): Promise<void> {
@@ -64,6 +82,7 @@ export class SessionSseService implements OnDestroy {
   }
 
   private notify(title: string, body: string): void {
+    if (!this.isLeader) return;
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     new Notification(title, { body, silent: true });
   }
@@ -89,7 +108,7 @@ export class SessionSseService implements OnDestroy {
   }
 
   private playSound(type: 'idle' | 'crashed' | 'closed'): void {
-    if (!this._soundEnabled()) return;
+    if (!this.isLeader || !this._soundEnabled()) return;
     try {
       this.audioCtx ??= new AudioContext();
       const ctx = this.audioCtx;
@@ -211,6 +230,13 @@ export class SessionSseService implements OnDestroy {
     this._sessions.update((sessions) => sessions.filter((s) => s.sessionId !== sessionId));
   }
 
+  deleteAllClosed(): void {
+    this.http.delete('/api/sessions').subscribe({
+      error: (e) => console.error('Delete all closed failed', e),
+    });
+    this._sessions.update((sessions) => sessions.filter((s) => s.status !== 'closed'));
+  }
+
   private upsertSession(session: Session): void {
     const existing = this._sessions().find(s => s.sessionId === session.sessionId);
     if (existing && existing.status !== session.status) {
@@ -251,6 +277,7 @@ export class SessionSseService implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.leaderAbort.abort();
     this.closeEventSource();
     if (this.retryTimer !== null) {
       clearTimeout(this.retryTimer);

@@ -63,7 +63,10 @@
 
       @if (closedSessions().length > 0) {
         <div class="closed-sessions-bar">
-          <span class="closed-bar-label">Closed ({{ closedSessions().length }})</span>
+          <div class="closed-bar-header">
+            <span class="closed-bar-label">Closed ({{ closedSessions().length }})</span>
+            <button class="dismiss-all-btn" (click)="dismissAllClosed()" title="Purge all closed sessions">Close all</button>
+          </div>
           <div class="closed-sessions-list">
             @for (session of closedSessions(); track session.sessionId) {
               <app-session-card [session]="session" [compact]="true" />

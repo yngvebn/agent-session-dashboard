@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, HostListener } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ShortcutService, Shortcut } from '../services/shortcut.service';
 
@@ -34,7 +34,18 @@ export class ShortcutSidebarComponent {
   }
 
   openUrl(shortcut: Shortcut): void {
-    window.location.href = shortcut.url.startsWith('http') ? shortcut.url : `https://${shortcut.url}`;
+    window.open(shortcut.url.startsWith('http') ? shortcut.url : `https://${shortcut.url}`, '_blank');
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onKeydown(event: KeyboardEvent): void {
+    const tag = (event.target as HTMLElement).tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    const n = parseInt(event.key, 10);
+    if (n >= 1 && n <= 9) {
+      const shortcut = this.service.shortcuts()[n - 1];
+      if (shortcut) this.openUrl(shortcut);
+    }
   }
 
   // ── Drag & Drop ───────────────────────────────────────────────────────────

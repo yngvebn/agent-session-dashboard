@@ -55,6 +55,13 @@
       }
     </div>
 
+    @if (session.model) {
+      <div class="model-row">
+        <span class="model-label">model</span>
+        <span class="model-value">{{ session.model }}</span>
+      </div>
+    }
+
     @if (hasTokens) {
       <div class="token-row">
         <span class="token-label">tokens</span>

@@ -59,6 +59,17 @@
   }
 }
 
+.shortcut-key {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  opacity: 0.45;
+  min-width: 0.85rem;
+  text-align: center;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-family: monospace;
+}
+
 .shortcut-favicon {
   width: 16px;
   height: 16px;

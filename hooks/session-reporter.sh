@@ -43,14 +43,30 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ] && command -v jq &>/de
     [ -n "$CUSTOM_TITLE" ] && SESSION_NAME="$CUSTOM_TITLE" || { [ -n "$AI_TITLE" ] && SESSION_NAME="$AI_TITLE"; }
 fi
 
+# Model: captured from SessionStart payload, persisted to temp file
+MODEL_FILE="${TMPDIR:-/tmp}/claude-hook-${SESSION_ID}-model.txt"
+MODEL=""
+if [ "$EVENT" = "started" ]; then
+    MODEL=$(echo "$INPUT" | jq -r '.model // empty' 2>/dev/null)
+    [ -n "$MODEL" ] && echo "$MODEL" > "$MODEL_FILE"
+fi
+[ -z "$MODEL" ] && [ -f "$MODEL_FILE" ] && MODEL=$(cat "$MODEL_FILE")
+
+# Tokens: only meaningful on "stop" — parse cumulative totals from transcript
 TOKENS_IN=0
 TOKENS_OUT=0
-if [ "$EVENT" = "stop" ] && command -v jq &>/dev/null; then
-    INPUT_T=$(echo "$INPUT" | jq -r '.usage.input_tokens // 0')
-    CACHE_READ=$(echo "$INPUT" | jq -r '.usage.cache_read_input_tokens // 0')
-    CACHE_CREATE=$(echo "$INPUT" | jq -r '.usage.cache_creation_input_tokens // 0')
-    TOKENS_IN=$(( INPUT_T + CACHE_READ + CACHE_CREATE ))
-    TOKENS_OUT=$(echo "$INPUT" | jq -r '.usage.output_tokens // 0')
+if [ "$EVENT" = "stop" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ] && command -v jq &>/dev/null; then
+    USAGE=$(jq -sr '
+        [.[] | select(.type == "assistant") | .message.usage // empty] |
+        {
+            input:        (map(.input_tokens          // 0) | add // 0),
+            output:       (map(.output_tokens         // 0) | add // 0),
+            cache_read:   (map(.cache_read_input_tokens   // 0) | add // 0),
+            cache_create: (map(.cache_creation_input_tokens // 0) | add // 0)
+        }
+    ' "$TRANSCRIPT_PATH" 2>/dev/null || echo '{"input":0,"output":0,"cache_read":0,"cache_create":0}')
+    TOKENS_IN=$(echo "$USAGE" | jq -r '(.input + .cache_read + .cache_create)')
+    TOKENS_OUT=$(echo "$USAGE" | jq -r '.output')
 fi
 
 BODY=$(jq -n \
@@ -61,10 +77,12 @@ BODY=$(jq -n \
     --arg workingDir "${CWD:-}" \
     --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg branch "$BRANCH" \
+    --arg model "$MODEL" \
     --argjson tokensIn "$TOKENS_IN" \
     --argjson tokensOut "$TOKENS_OUT" \
     '{sessionId: $sessionId, name: $name, event: $event, pid: $pid, workingDir: $workingDir, timestamp: $timestamp, tokensIn: $tokensIn, tokensOut: $tokensOut}
-     + (if $branch != "" then {branch: $branch} else {} end)')
+     + (if $branch != "" then {branch: $branch} else {} end)
+     + (if $model != "" then {model: $model} else {} end)')
 
 curl -sf -X POST \
     -H "Content-Type: application/json" \

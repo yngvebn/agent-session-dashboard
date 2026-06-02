@@ -148,6 +148,24 @@
   }
 }
 
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+
+  .model-label {
+    color: var(--text-muted);
+    min-width: 3.5rem;
+  }
+
+  .model-value {
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-size: 0.72rem;
+  }
+}
+
 .token-row {
   display: flex;
   align-items: center;
@@ -259,7 +277,7 @@
 .card-footer {
   border-top: 1px solid var(--card-border);
   padding-top: 0.6rem;
-  margin-top: 0.1rem;
+  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;

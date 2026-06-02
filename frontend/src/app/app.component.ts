@@ -71,4 +71,8 @@ export class AppComponent {
       .filter(s => s.status === 'closed')
       .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
   });
+
+  dismissAllClosed(): void {
+    this.sseService.deleteAllClosed();
+  }
 }

@@ -29,6 +29,7 @@ BASH_SCRIPT="$HOOKS_DIR/session-reporter.sh"
 HEARTBEAT_CMD="bash \"$BASH_SCRIPT\" heartbeat"
 CLOSED_CMD="bash \"$BASH_SCRIPT\" closed"
 STARTED_CMD="bash \"$BASH_SCRIPT\" started"
+STOP_CMD="bash \"$BASH_SCRIPT\" stop"
 SUBAGENT_CMD="bash \"$BASH_SCRIPT\" subagent-start"
 NOTIFICATION_CMD="bash \"$BASH_SCRIPT\" notification"
 WT_CREATE_CMD="bash \"$BASH_SCRIPT\" worktree-create"
@@ -43,6 +44,7 @@ HOOK_CONFIG=$(jq -n \
     --arg heartbeat  "$HEARTBEAT_CMD" \
     --arg closed     "$CLOSED_CMD" \
     --arg started    "$STARTED_CMD" \
+    --arg stop       "$STOP_CMD" \
     --arg subagent   "$SUBAGENT_CMD" \
     --arg notify     "$NOTIFICATION_CMD" \
     --arg wtCreate   "$WT_CREATE_CMD" \
@@ -51,7 +53,7 @@ HOOK_CONFIG=$(jq -n \
     SessionStart:   [{ hooks: [{ type: "command", command: $started }] }],
     SessionEnd:     [{ hooks: [{ type: "command", command: $closed }] }],
     PostToolUse:    [{ matcher: "", hooks: [{ type: "command", command: $heartbeat }] }],
-    Stop:           [{ hooks: [{ type: "command", command: $heartbeat }] }],
+    Stop:           [{ hooks: [{ type: "command", command: $stop }] }],
     SubagentStart:  [{ hooks: [{ type: "command", command: $subagent }] }],
     SubagentStop:   [{ hooks: [{ type: "command", command: $heartbeat }] }],
     Notification:   [{ hooks: [{ type: "command", command: $notify }] }],

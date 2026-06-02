@@ -29,6 +29,15 @@ public class SessionService(SessionDbContext db, SseService sseService)
         return true;
     }
 
+    public async Task<int> DeleteAllClosedAsync()
+    {
+        var closed = await db.Sessions.Where(s => s.Status == "closed").ToListAsync();
+        db.Sessions.RemoveRange(closed);
+        await db.SaveChangesAsync();
+        foreach (var s in closed) sseService.BroadcastSessionClosed(s.SessionId);
+        return closed.Count;
+    }
+
     public async Task UpsertFromHookAsync(HookPayload payload)
     {
         var now = DateTime.UtcNow;
@@ -111,7 +120,8 @@ public class SessionService(SessionDbContext db, SseService sseService)
                 LastSeen = payload.Timestamp ?? now,
                 Pid = payload.Pid,
                 WorkingDir = payload.WorkingDir ?? "",
-                Branch = payload.Branch
+                Branch = payload.Branch,
+                Model = payload.Model
             };
             db.Sessions.Add(existing);
         }
@@ -122,6 +132,7 @@ public class SessionService(SessionDbContext db, SseService sseService)
             existing.Pid = payload.Pid != 0 ? payload.Pid : existing.Pid;
             existing.WorkingDir = payload.WorkingDir ?? existing.WorkingDir;
             if (payload.Branch != null) existing.Branch = payload.Branch;
+            if (payload.Model != null) existing.Model = payload.Model;
             if (existing.Status == "idle" || existing.Status == "crashed" ||
                 (payload.EventType == "started" && existing.Status == "closed"))
             {
@@ -149,4 +160,5 @@ public class HookPayload
     public string? Branch { get; set; }
     public long TokensIn { get; set; }
     public long TokensOut { get; set; }
+    public string? Model { get; set; }
 }

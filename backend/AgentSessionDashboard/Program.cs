@@ -49,6 +49,7 @@ using (var scope = app.Services.CreateScope())
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"Worktree\" TEXT NULL"); } catch { }
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"TokensIn\" INTEGER NOT NULL DEFAULT 0"); } catch { }
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"TokensOut\" INTEGER NOT NULL DEFAULT 0"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"Model\" TEXT NULL"); } catch { }
     db.Database.ExecuteSqlRaw("""
         CREATE TABLE IF NOT EXISTS "SessionEvents" (
             "Id" INTEGER NOT NULL CONSTRAINT "PK_SessionEvents" PRIMARY KEY AUTOINCREMENT,
@@ -131,6 +132,13 @@ app.MapDelete("/api/sessions/{id}", async (string id, SessionService sessionServ
 {
     var deleted = await sessionService.DeleteSessionAsync(id);
     return deleted ? Results.Ok() : Results.NotFound();
+});
+
+// DELETE /api/sessions — purge all closed sessions
+app.MapDelete("/api/sessions", async (SessionService sessionService) =>
+{
+    var count = await sessionService.DeleteAllClosedAsync();
+    return Results.Ok(new { deleted = count });
 });
 
 // GET /api/sessions/stream — SSE endpoint
