@@ -18,4 +18,5 @@ public class Session
     public long TokensIn { get; set; }
     public long TokensOut { get; set; }
     public string? Model { get; set; }
+    public string AgentType { get; set; } = "claude"; // "claude" | "copilot"
 }

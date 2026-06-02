@@ -70,6 +70,9 @@ export class SessionCardComponent implements OnInit, OnDestroy {
 
   get resumeCommand(): string {
     const dir = this.session.workingDir || '.';
+    if (this.session.agentType === 'copilot') {
+      return `cd "${dir}" && gh copilot -- --resume=${this.session.sessionId}`;
+    }
     return `cd "${dir}" && claude --resume ${this.session.sessionId}`;
   }
 

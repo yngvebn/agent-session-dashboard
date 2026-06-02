@@ -48,7 +48,8 @@ public class SseService
             session.Worktree,
             session.Branch,
             session.TokensIn,
-            session.TokensOut
+            session.TokensOut,
+            session.AgentType
         }, _jsonOptions);
 
         var message = $"event: session-update\ndata: {payload}\n\n";

@@ -34,6 +34,9 @@ SUBAGENT_CMD="bash \"$BASH_SCRIPT\" subagent-start"
 NOTIFICATION_CMD="bash \"$BASH_SCRIPT\" notification"
 WT_CREATE_CMD="bash \"$BASH_SCRIPT\" worktree-create"
 WT_REMOVE_CMD="bash \"$BASH_SCRIPT\" worktree-remove"
+# NOTE: For Copilot CLI, Stop fires at end of each agent turn (not session end).
+# There is no session-end hook in Copilot CLI, so we send heartbeat for Stop
+# and rely on idle→crashed detection for session end.
 
 # ── Claude Code (~/.claude/settings.json) ────────────────────────────────────
 
@@ -73,13 +76,12 @@ mkdir -p "$COPILOT_HOOKS_DIR"
 
 jq -n \
     --arg heartbeat "$HEARTBEAT_CMD" \
-    --arg closed    "$CLOSED_CMD" \
     --arg started   "$STARTED_CMD" \
     --arg subagent  "$SUBAGENT_CMD" \
 '{
     hooks: {
         SessionStart:    [{ type: "command", command: $started,   timeout: 5 }],
-        Stop:            [{ type: "command", command: $closed,    timeout: 5 }],
+        Stop:            [{ type: "command", command: $heartbeat, timeout: 5 }],
         PostToolUse:     [{ type: "command", command: $heartbeat, timeout: 5 }],
         UserPromptSubmit:[{ type: "command", command: $heartbeat, timeout: 5 }],
         SubagentStart:   [{ type: "command", command: $subagent,  timeout: 5 }],

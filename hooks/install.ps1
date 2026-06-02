@@ -95,14 +95,15 @@ New-Item -ItemType Directory -Force $copilotHooksDir | Out-Null
 
 # Copilot supports per-OS command overrides in the same config file
 $psHeartbeat    = "pwsh -NonInteractive -File `"$psScript`" -Event heartbeat"
-$psClosed       = "pwsh -NonInteractive -File `"$psScript`" -Event closed"
 $psStarted      = "pwsh -NonInteractive -File `"$psScript`" -Event started"
 $psSubagent     = "pwsh -NonInteractive -File `"$psScript`" -Event subagent-start"
 $bashHeartbeat  = "bash `"$bashScript`" heartbeat"
-$bashClosed     = "bash `"$bashScript`" closed"
 $bashStarted    = "bash `"$bashScript`" started"
 $bashSubagent   = "bash `"$bashScript`" subagent-start"
 
+# NOTE: Copilot CLI's Stop fires at the end of each agent turn, not session end.
+# There is no session-end hook in Copilot CLI, so we send heartbeat for Stop
+# and rely on idle→crashed detection for session end.
 $copilotHookConfig = @{
     hooks = @{
         SessionStart = @(@{
@@ -113,8 +114,8 @@ $copilotHookConfig = @{
         })
         Stop = @(@{
             type    = "command"
-            command = $bashClosed
-            windows = $psClosed
+            command = $bashHeartbeat
+            windows = $psHeartbeat
             timeout = 5
         })
         PostToolUse = @(@{

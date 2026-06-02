@@ -15,6 +15,7 @@ export interface Session {
   tokensIn: number;
   tokensOut: number;
   model: string | null;
+  agentType: 'claude' | 'copilot';
 }
 
 export interface SessionEvent {

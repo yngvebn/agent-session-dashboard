@@ -34,8 +34,24 @@ if [ -n "$CWD" ] && command -v git &>/dev/null; then
     [ "$BRANCH" = "HEAD" ] && BRANCH=""
 fi
 
-# Session name: custom-title > ai-title > cwd basename
+# Use the real Copilot process PID from the inuse lock file, not the hook script's PID
+ACTUAL_PID=$$
+COPILOT_SESSION_DIR="$HOME/.copilot/session-state/${SESSION_ID}"
+if [ -d "$COPILOT_SESSION_DIR" ]; then
+    LOCK_FILE=$(ls "$COPILOT_SESSION_DIR"/inuse.*.lock 2>/dev/null | head -1)
+    if [ -n "$LOCK_FILE" ]; then
+        LOCK_PID=$(basename "$LOCK_FILE" | sed 's/inuse\.\([0-9]*\)\.lock/\1/')
+        [ -n "$LOCK_PID" ] && ACTUAL_PID="$LOCK_PID"
+    fi
+fi
+
+# Session name: Copilot workspace.yaml > Claude transcript custom-title/ai-title > cwd basename
 SESSION_NAME=$(basename "${CWD:-unknown}")
+COPILOT_WORKSPACE="$HOME/.copilot/session-state/${SESSION_ID}/workspace.yaml"
+if [ -f "$COPILOT_WORKSPACE" ]; then
+    WORKSPACE_NAME=$(grep '^name:' "$COPILOT_WORKSPACE" 2>/dev/null | sed 's/^name:[[:space:]]*//' || true)
+    [ -n "$WORKSPACE_NAME" ] && SESSION_NAME="$WORKSPACE_NAME"
+fi
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ] && command -v jq &>/dev/null; then
     CUSTOM_TITLE=$(jq -r 'select(.type == "custom-title") | .customTitle' "$TRANSCRIPT_PATH" 2>/dev/null | grep -v null | tail -1 || true)
@@ -73,7 +89,7 @@ BODY=$(jq -n \
     --arg sessionId "$SESSION_ID" \
     --arg name "$SESSION_NAME" \
     --arg event "$EVENT" \
-    --argjson pid "$$" \
+    --argjson pid "$ACTUAL_PID" \
     --arg workingDir "${CWD:-}" \
     --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg branch "$BRANCH" \
