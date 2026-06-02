@@ -50,6 +50,20 @@ using (var scope = app.Services.CreateScope())
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"TokensIn\" INTEGER NOT NULL DEFAULT 0"); } catch { }
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"TokensOut\" INTEGER NOT NULL DEFAULT 0"); } catch { }
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"Model\" TEXT NULL"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Sessions\" ADD COLUMN \"AgentType\" TEXT NOT NULL DEFAULT 'claude'"); } catch { }
+
+    // Backfill AgentType for existing sessions: if the Copilot session dir exists, it's a copilot session
+    var copilotSessionsPath = Environment.GetEnvironmentVariable("COPILOT_SESSIONS_PATH");
+    if (!string.IsNullOrEmpty(copilotSessionsPath))
+    {
+        var allSessions = db.Sessions.Where(s => s.AgentType == "claude").ToList();
+        foreach (var s in allSessions)
+        {
+            if (Directory.Exists(Path.Combine(copilotSessionsPath, s.SessionId)))
+                s.AgentType = "copilot";
+        }
+        db.SaveChanges();
+    }
     db.Database.ExecuteSqlRaw("""
         CREATE TABLE IF NOT EXISTS "SessionEvents" (
             "Id" INTEGER NOT NULL CONSTRAINT "PK_SessionEvents" PRIMARY KEY AUTOINCREMENT,

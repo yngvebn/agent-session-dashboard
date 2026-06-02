@@ -9,6 +9,14 @@ namespace AgentSessionDashboard.Services;
 public class SessionService(SessionDbContext db, SseService sseService)
 {
     private static readonly TimeSpan MaxAge = TimeSpan.FromDays(7);
+    private readonly string? _copilotSessionsPath =
+        Environment.GetEnvironmentVariable("COPILOT_SESSIONS_PATH");
+
+    private string DetectAgentType(string sessionId) =>
+        !string.IsNullOrEmpty(_copilotSessionsPath) &&
+        Directory.Exists(Path.Combine(_copilotSessionsPath, sessionId))
+            ? "copilot"
+            : "claude";
 
     public async Task<List<Session>> GetActiveSessionsAsync()
     {
@@ -46,13 +54,31 @@ public class SessionService(SessionDbContext db, SseService sseService)
         switch (payload.EventType)
         {
             case "closed":
-                if (existing != null)
+                if (existing == null)
+                {
+                    // Session closed before we ever saw a heartbeat/started — create it as closed
+                    // so it at least shows in the dashboard.
+                    existing = new Session
+                    {
+                        SessionId = payload.SessionId,
+                        Name = payload.Name ?? "",
+                        Status = "closed",
+                        StartedAt = payload.Timestamp ?? now,
+                        LastSeen = payload.Timestamp ?? now,
+                        Pid = payload.Pid,
+                        WorkingDir = payload.WorkingDir ?? "",
+                        Branch = payload.Branch,
+                        AgentType = DetectAgentType(payload.SessionId)
+                    };
+                    db.Sessions.Add(existing);
+                }
+                else
                 {
                     existing.Status = "closed";
                     existing.LastSeen = payload.Timestamp ?? now;
-                    await db.SaveChangesAsync();
-                    sseService.BroadcastSessionClosed(existing.SessionId);
                 }
+                await db.SaveChangesAsync();
+                sseService.BroadcastSessionClosed(existing.SessionId);
                 return;
 
             case "worktree-create":
@@ -121,7 +147,8 @@ public class SessionService(SessionDbContext db, SseService sseService)
                 Pid = payload.Pid,
                 WorkingDir = payload.WorkingDir ?? "",
                 Branch = payload.Branch,
-                Model = payload.Model
+                Model = payload.Model,
+                AgentType = DetectAgentType(payload.SessionId)
             };
             db.Sessions.Add(existing);
         }
@@ -139,6 +166,9 @@ public class SessionService(SessionDbContext db, SseService sseService)
                 existing.Status = "running";
                 existing.LastActivity = null;
             }
+            // Re-detect agent type in case the session was created before AgentType was tracked
+            if (existing.AgentType == "claude")
+                existing.AgentType = DetectAgentType(payload.SessionId);
         }
 
         await db.SaveChangesAsync();
