@@ -12,6 +12,18 @@ the same run.
 
 ---
 
+## Section hashing — one definition, used by both phases
+
+Producer and applier must compute hashes identically or every question re-triggers. Use
+exactly this rule, and **never restate it in a question body** — it is shared convention,
+not something the reader needs:
+
+> A *section* is its heading line inclusive, through the line before the next heading of
+> the same or higher level. Normalise to LF line endings, right-strip each line, drop
+> trailing blank lines, then take the sha256 of the UTF-8 bytes.
+
+---
+
 ## Hard constraints
 
 These are not suggestions. Violating any of them is a failed run, and you should say so
@@ -128,8 +140,11 @@ curl -s -X POST http://localhost:5900/api/questions \
 Rules for the content:
 
 - **Title** is the question, short enough to read at a glance.
-- **Body** gives just enough context to decide without opening Linear. Include the
-  numbers that make the tradeoff real.
+- **Body** is **human-facing only** — at most three short paragraphs, ~120 words. Give
+  just enough context to decide without opening Linear, including the numbers that make
+  the tradeoff real. No notes addressed to the applying run, no hash rules, no
+  meta-commentary about your own operations. If the applier needs to know something,
+  it can re-read the issue.
 - **Options** are concrete and mutually exclusive, 2–4 of them, each `description`
   saying what will actually happen — including any state or label change. One option
   should usually be the do-nothing/close path.

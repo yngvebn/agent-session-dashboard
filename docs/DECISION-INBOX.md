@@ -261,11 +261,16 @@ prompt. A prompt can misbehave; a unique index cannot.
   permanently hide a subject that changed.
 * **A pending answer is never clobbered** — an ask against an `answered` row returns
   `pending-answer` and writes nothing.
-* **No repo writes by the job** — the wrapper passes
-  `--disallowedTools Write Edit NotebookEdit`, so "never write code" is mechanical rather
-  than a matter of trust. `bypassPermissions` is required because no human is present to
-  approve the `linctl` and `curl` calls; narrowing the tool surface is what makes that
-  acceptable.
+* **Write/Edit unavailable — but this is a reduction, not a guarantee.** The wrapper passes
+  `--disallowedTools Write Edit NotebookEdit`, and that genuinely holds: verified
+  2026-08-03 that a run asked to use `Write` under `bypassPermissions` returns `BLOCKED`
+  and creates nothing. It removes the most likely accidental path — an agent deciding to
+  "just fix" a file it noticed. It does **not** make repo modification impossible: `Bash`
+  must stay allowed for `linctl` and `curl`, and shell redirection writes files perfectly
+  well (also verified). So "this job preps, it never writes code or touches git" rests on
+  the prompt constraint. Treat it as instruction-enforced, and if that ever needs to be
+  mechanical, the answer is a narrower `Bash(...)` allowlist rather than more
+  `--disallowedTools`.
 * **No wasted token on a no-op run** — the pool check is in `run-decision-inbox.ps1`
   before `claude` is invoked at all.
 
