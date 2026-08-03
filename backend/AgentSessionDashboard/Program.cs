@@ -17,6 +17,8 @@ builder.Services.AddDbContext<SessionDbContext>(options =>
 // ── Application services ──────────────────────────────────────────────────────
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<ShortcutService>();
+builder.Services.AddScoped<QuestionService>();
+builder.Services.AddScoped<JobRunService>();
 builder.Services.AddSingleton<SseService>();
 builder.Services.AddHostedService<SessionStatusWorker>();
 builder.Services.AddHttpClient("scraper");
@@ -68,6 +70,50 @@ using (var scope = app.Services.CreateScope())
             "Name" TEXT NOT NULL,
             "Order" INTEGER NOT NULL DEFAULT 0
         )
+    """);
+    // Decision inbox — see docs/DECISION-INBOX.md. The unique index on
+    // Fingerprint is the load-bearing part: it makes duplicate questions
+    // impossible rather than merely unlikely.
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "Questions" (
+            "Id" INTEGER NOT NULL CONSTRAINT "PK_Questions" PRIMARY KEY AUTOINCREMENT,
+            "Fingerprint" TEXT NOT NULL,
+            "Source" TEXT NOT NULL,
+            "SubjectId" TEXT NULL,
+            "DetectionType" TEXT NOT NULL,
+            "Title" TEXT NOT NULL,
+            "Body" TEXT NOT NULL,
+            "Options" TEXT NOT NULL DEFAULT '[]',
+            "PinnedDelete" TEXT NULL,
+            "SubjectHash" TEXT NULL,
+            "State" TEXT NOT NULL DEFAULT 'open',
+            "AnswerKey" TEXT NULL,
+            "AnswerText" TEXT NULL,
+            "AnsweredAt" TEXT NULL,
+            "AppliedAt" TEXT NULL,
+            "AppliedOps" TEXT NULL,
+            "History" TEXT NULL,
+            "Note" TEXT NULL,
+            "CreatedAt" TEXT NOT NULL
+        )
+    """);
+    db.Database.ExecuteSqlRaw("""
+        CREATE UNIQUE INDEX IF NOT EXISTS "IX_Questions_Fingerprint" ON "Questions" ("Fingerprint")
+    """);
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "JobRuns" (
+            "Id" INTEGER NOT NULL CONSTRAINT "PK_JobRuns" PRIMARY KEY AUTOINCREMENT,
+            "JobName" TEXT NOT NULL,
+            "StartedAt" TEXT NOT NULL,
+            "FinishedAt" TEXT NULL,
+            "Outcome" TEXT NULL,
+            "Detail" TEXT NULL,
+            "Created" INTEGER NOT NULL DEFAULT 0,
+            "Applied" INTEGER NOT NULL DEFAULT 0
+        )
+    """);
+    db.Database.ExecuteSqlRaw("""
+        CREATE INDEX IF NOT EXISTS "IX_JobRuns_JobName_StartedAt" ON "JobRuns" ("JobName", "StartedAt")
     """);
 }
 
@@ -234,6 +280,101 @@ app.MapDelete("/api/shortcuts/{id}", async (int id, ShortcutService shortcutServ
     return deleted ? Results.Ok() : Results.NotFound();
 });
 
+// ── Decision inbox endpoints ──────────────────────────────────────────────────
+// The store is domain-agnostic: it holds questions and answers and knows nothing
+// about Linear. The job that produces and applies them runs on the host, because
+// this process is containerised and cannot reach `claude` or `linctl`.
+// See docs/DECISION-INBOX.md.
+
+// GET /api/questions[?state=open,answered] — card list, and the job's pre-flight
+app.MapGet("/api/questions", async (string? state, QuestionService questions) =>
+{
+    var list = await questions.GetAsync(state);
+    return Results.Ok(list.Select(SseService.QuestionPayload));
+});
+
+// POST /api/questions — idempotent ask, keyed on fingerprint
+app.MapPost("/api/questions", async (UpsertQuestionRequest body, QuestionService questions) =>
+{
+    if (string.IsNullOrWhiteSpace(body.Source)
+        || string.IsNullOrWhiteSpace(body.DetectionType)
+        || string.IsNullOrWhiteSpace(body.Title))
+    {
+        return Results.BadRequest(new { error = "source, detectionType and title are required" });
+    }
+
+    var (question, disposition) = await questions.UpsertAsync(body);
+    if (disposition == "at-cap")
+    {
+        return Results.Json(
+            new { disposition, cap = QuestionService.OpenQuestionCap },
+            statusCode: StatusCodes.Status409Conflict);
+    }
+
+    return Results.Ok(new
+    {
+        disposition,
+        question = question is null ? null : SseService.QuestionPayload(question)
+    });
+});
+
+// POST /api/questions/{id}/answer — from the card UI
+app.MapPost("/api/questions/{id:int}/answer", async (int id, AnswerRequest body, QuestionService questions) =>
+{
+    if (string.IsNullOrWhiteSpace(body.Key))
+        return Results.BadRequest(new { error = "key is required" });
+
+    var q = await questions.AnswerAsync(id, body.Key, body.Text);
+    return q is null ? Results.NotFound() : Results.Ok(SseService.QuestionPayload(q));
+});
+
+// POST /api/questions/{id}/dismiss — closes with no downstream write
+app.MapPost("/api/questions/{id:int}/dismiss", async (int id, QuestionService questions) =>
+{
+    var q = await questions.DismissAsync(id);
+    return q is null ? Results.NotFound() : Results.Ok(SseService.QuestionPayload(q));
+});
+
+// POST /api/questions/{id}/applied — records what ran, rebaselines subjectHash
+app.MapPost("/api/questions/{id:int}/applied", async (int id, AppliedRequest body, QuestionService questions) =>
+{
+    var q = await questions.MarkAppliedAsync(id, body.Ops, body.SubjectHash);
+    return q is null ? Results.NotFound() : Results.Ok(SseService.QuestionPayload(q));
+});
+
+// POST /api/questions/{id}/reopen — pre-flight found the subject had moved
+app.MapPost("/api/questions/{id:int}/reopen", async (int id, ReopenRequest body, QuestionService questions) =>
+{
+    var q = await questions.ReopenAsync(id, body.Reason ?? "Subject changed.", body.SubjectHash);
+    return q is null ? Results.NotFound() : Results.Ok(SseService.QuestionPayload(q));
+});
+
+// POST /api/questions/{id}/failed — apply blew up; surfaces on the card
+app.MapPost("/api/questions/{id:int}/failed", async (int id, FailedRequest body, QuestionService questions) =>
+{
+    var q = await questions.MarkFailedAsync(id, body.Detail ?? "Apply failed.");
+    return q is null ? Results.NotFound() : Results.Ok(SseService.QuestionPayload(q));
+});
+
+// ── Job heartbeat endpoints ───────────────────────────────────────────────────
+
+// GET /api/jobs/runs?name=decision-inbox&limit=1 — drives the stale indicator
+app.MapGet("/api/jobs/runs", async (string? name, int? limit, JobRunService jobRuns) =>
+{
+    var runs = await jobRuns.GetAsync(name, limit ?? 10);
+    return Results.Ok(runs);
+});
+
+// POST /api/jobs/runs — the job records its own run
+app.MapPost("/api/jobs/runs", async (RecordJobRunRequest body, JobRunService jobRuns) =>
+{
+    if (string.IsNullOrWhiteSpace(body.JobName))
+        return Results.BadRequest(new { error = "jobName is required" });
+
+    var run = await jobRuns.RecordAsync(body);
+    return Results.Created($"/api/jobs/runs/{run.Id}", run);
+});
+
 // ── SPA fallback — serve index.html for non-API GET requests ─────────────────
 app.MapFallback(async (HttpContext httpContext) =>
 {
@@ -265,3 +406,9 @@ app.Run();
 // ── Request DTOs ──────────────────────────────────────────────────────────────
 record CreateShortcutRequest(string Url, string? Name);
 record UpdateNameRequest(string Name);
+
+// Decision inbox
+record AnswerRequest(string Key, string? Text);
+record AppliedRequest(System.Text.Json.Nodes.JsonNode? Ops, string? SubjectHash);
+record ReopenRequest(string? Reason, string? SubjectHash);
+record FailedRequest(string? Detail);

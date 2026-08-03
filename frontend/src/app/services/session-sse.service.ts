@@ -1,5 +1,6 @@
 import { Injectable, OnDestroy, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { QuestionService } from './question.service';
 
 export interface Session {
   sessionId: string;
@@ -27,6 +28,7 @@ export interface SessionEvent {
 @Injectable({ providedIn: 'root' })
 export class SessionSseService implements OnDestroy {
   private http = inject(HttpClient);
+  private questionService = inject(QuestionService);
 
   private _sessions = signal<Session[]>([]);
   private _connected = signal(false);
@@ -199,6 +201,24 @@ export class SessionSseService implements OnDestroy {
         });
       } catch {
         console.error('Failed to parse session-event', event.data);
+      }
+    });
+
+    // Decision inbox rides the same stream — passive delivery by design, so no
+    // notification or sound here. See docs/DECISION-INBOX.md.
+    es.addEventListener('question-update', (event: MessageEvent) => {
+      try {
+        this.questionService.upsert(JSON.parse(event.data));
+      } catch {
+        console.error('Failed to parse question-update event', event.data);
+      }
+    });
+
+    es.addEventListener('job-run', (event: MessageEvent) => {
+      try {
+        this.questionService.setLastRun(JSON.parse(event.data));
+      } catch {
+        console.error('Failed to parse job-run event', event.data);
       }
     });
 

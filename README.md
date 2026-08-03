@@ -121,6 +121,35 @@ The `● Live` indicator in the top-right confirms the SSE stream is connected. 
 
 ---
 
+## Decision Inbox (optional)
+
+An async decision queue for stalled work items, rendered above the session grid. A
+scheduled job posts up to three questions, you answer them on the startpage, and a later
+run applies the answers. Full design and rationale: **[docs/DECISION-INBOX.md](docs/DECISION-INBOX.md)**.
+
+The dashboard half needs no setup — the tables and endpoints ship with the container. To
+turn the job on:
+
+```powershell
+# Requires: claude CLI on PATH, and `linctl auth` already run once
+pwsh scripts/register-decision-inbox-task.ps1
+```
+
+That registers a task running as **you** (not `SYSTEM` — `linctl` credentials are
+per-profile), 3 minutes after logon and hourly thereafter, with the Claude session's
+working directory set to the target repo so it has code context.
+
+```powershell
+Start-ScheduledTask -TaskName 'Decision Inbox'          # run it now
+pwsh scripts/run-decision-inbox.ps1 -DryRun             # pre-flight only, no LLM
+pwsh scripts/register-decision-inbox-task.ps1 -Unregister
+```
+
+If the job stops working, the heartbeat line next to **Decisions** turns amber — an empty
+inbox should never be mistaken for "nothing to decide".
+
+---
+
 ## Local Development (without Docker)
 
 ```powershell

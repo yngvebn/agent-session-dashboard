@@ -50,6 +50,23 @@
 
   <div class="dashboard-body">
     <main class="sessions-area">
+      @if (openQuestions().length > 0 || pendingQuestions().length > 0 || heartbeatStale()) {
+        <section class="inbox">
+          <div class="inbox-header">
+            <span class="inbox-label">Decisions ({{ openQuestions().length }})</span>
+            <span class="inbox-heartbeat" [class.stale]="heartbeatStale()">{{ heartbeatLabel() }}</span>
+          </div>
+          @for (question of openQuestions(); track question.id) {
+            <app-question-card [question]="question" />
+          }
+          @if (pendingQuestions().length > 0) {
+            <p class="inbox-pending">
+              {{ pendingQuestions().length }} answered, waiting for the next run to apply.
+            </p>
+          }
+        </section>
+      }
+
       <div class="sessions-grid">
         @if (activeSessions().length === 0 && closedSessions().length === 0) {
           <div class="empty-state">

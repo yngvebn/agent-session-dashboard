@@ -207,3 +207,43 @@
   color: var(--text-muted);
   font-size: 0.9rem;
 }
+
+// ── Decision inbox ───────────────────────────────────────────────────────────
+.inbox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+  max-width: 46rem;
+}
+
+.inbox-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.inbox-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.inbox-heartbeat {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+
+  // Quiet until it isn't — an empty inbox must not read as "nothing to decide"
+  // when the job actually stopped running.
+  &.stale {
+    color: var(--status-idle-text);
+  }
+}
+
+.inbox-pending {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}

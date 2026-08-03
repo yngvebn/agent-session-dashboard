@@ -80,6 +80,56 @@ public class SseService
         Broadcast(": keepalive\n\n");
     }
 
+    public void BroadcastQuestionUpdate(InboxQuestion question)
+    {
+        var payload = JsonSerializer.Serialize(QuestionPayload(question), _jsonOptions);
+        Broadcast($"event: question-update\ndata: {payload}\n\n");
+    }
+
+    public void BroadcastJobRun(JobRun run)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            run.Id,
+            run.JobName,
+            run.StartedAt,
+            run.FinishedAt,
+            run.Outcome,
+            run.Detail,
+            run.Created,
+            run.Applied
+        }, _jsonOptions);
+        Broadcast($"event: job-run\ndata: {payload}\n\n");
+    }
+
+    /// <summary>
+    /// Shape sent to the client. JSON columns are re-parsed so the frontend gets
+    /// real arrays/objects rather than strings it has to parse itself. Shared with
+    /// the REST endpoints so SSE and GET never drift.
+    /// </summary>
+    public static object QuestionPayload(InboxQuestion q) => new
+    {
+        q.Id,
+        q.Fingerprint,
+        q.Source,
+        q.SubjectId,
+        q.DetectionType,
+        q.Title,
+        q.Body,
+        Options = QuestionService.ReadJson(q.Options),
+        PinnedDelete = QuestionService.ReadJson(q.PinnedDelete),
+        q.SubjectHash,
+        q.State,
+        q.AnswerKey,
+        q.AnswerText,
+        q.AnsweredAt,
+        q.AppliedAt,
+        AppliedOps = QuestionService.ReadJson(q.AppliedOps),
+        History = QuestionService.ReadJson(q.History),
+        q.Note,
+        q.CreatedAt
+    };
+
     private void Broadcast(string message)
     {
         foreach (var (clientId, channel) in _clients)

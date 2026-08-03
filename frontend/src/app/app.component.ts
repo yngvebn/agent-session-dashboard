@@ -1,8 +1,10 @@
 import { Component, inject, computed, signal, effect } from '@angular/core';
 import { SessionSseService } from './services/session-sse.service';
 import { VersionService } from './services/version.service';
+import { QuestionService } from './services/question.service';
 import { SessionCardComponent } from './session-card/session-card.component';
 import { ShortcutSidebarComponent } from './shortcut-sidebar/shortcut-sidebar.component';
+import { QuestionCardComponent } from './question-card/question-card.component';
 
 const STATUS_RANK: Record<string, number> = {
   running: 0,
@@ -13,13 +15,19 @@ const STATUS_RANK: Record<string, number> = {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [SessionCardComponent, ShortcutSidebarComponent],
+  imports: [SessionCardComponent, ShortcutSidebarComponent, QuestionCardComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
 })
 export class AppComponent {
   private sseService = inject(SessionSseService);
   private versionService = inject(VersionService);
+  private questionService = inject(QuestionService);
+
+  readonly openQuestions = this.questionService.openQuestions;
+  readonly pendingQuestions = this.questionService.pendingQuestions;
+  readonly heartbeatLabel = this.questionService.heartbeatLabel;
+  readonly heartbeatStale = this.questionService.isStale;
 
   readonly updateAvailable = this.versionService.updateAvailable;
   dismissUpdate(): void { this.versionService.dismiss(); }
