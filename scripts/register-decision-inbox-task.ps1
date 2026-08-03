@@ -25,6 +25,7 @@ param(
     [string]$DashboardUrl    = 'http://localhost:5900',
     [int]$IntervalMinutes    = 60,
     [string]$ConfigDir       = $env:CLAUDE_CONFIG_DIR,
+    [switch]$AllowDefaultConfig,
     [switch]$Unregister
 )
 
@@ -61,9 +62,41 @@ if (-not (Test-Path $authFile)) {
 # scope, so a scheduled task inherits nothing and silently falls back to ~/.claude —
 # a different config root with its own credentials. Bake the current value into the
 # task arguments rather than hoping the environment provides it.
+#
+# This fails rather than warns: a warning here produces a task that looks registered,
+# runs on schedule, and fails on auth every time — the exact silent rot the heartbeat
+# exists to catch, and better not to create in the first place.
 if (-not $ConfigDir) {
-    Write-Warning 'CLAUDE_CONFIG_DIR is not set in this shell. The task will use the default Claude config root.'
-    Write-Warning "If that root is not authenticated, every run fails on auth. Re-run with -ConfigDir '<path>' to pin it."
+    if (-not $AllowDefaultConfig) {
+        # List candidates rather than picking one. The presence of .credentials.json
+        # says nothing about whether those credentials still WORK — on this machine
+        # both roots have the file and only one authenticates, so a confident guess
+        # here would send you to the broken one.
+        $candidates = Get-ChildItem $HOME -Directory -Filter '.claude*' -ErrorAction SilentlyContinue |
+                      Where-Object { Test-Path (Join-Path $_.FullName '.credentials.json') }
+
+        $hint = if ($candidates) {
+            "`n`nConfig roots found (having credentials does NOT mean they are still valid —" +
+            "`nif unsure, run 'claude auth status' with CLAUDE_CONFIG_DIR set to each):`n" +
+            (($candidates | ForEach-Object { "  -ConfigDir '$($_.FullName)'" }) -join "`n")
+        } else { '' }
+        throw @"
+CLAUDE_CONFIG_DIR is not set in this shell, so the task cannot be pinned to a config root.
+
+That variable is per-process — it does not exist at User or Machine scope — so the
+scheduled task would fall back to the default root. If that root is not authenticated,
+EVERY run fails on auth while manual runs pass.
+
+Pass it explicitly:
+  pwsh scripts/register-decision-inbox-task.ps1 -ConfigDir '<path>'$hint
+
+Or, if the default root really is the authenticated one:
+  pwsh scripts/register-decision-inbox-task.ps1 -AllowDefaultConfig
+"@
+    }
+    else {
+        Write-Warning 'Registering against the default Claude config root (-AllowDefaultConfig).'
+    }
 }
 elseif (-not (Test-Path $ConfigDir)) {
     throw "ConfigDir does not exist: $ConfigDir"
