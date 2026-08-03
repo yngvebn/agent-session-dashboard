@@ -77,18 +77,41 @@ For each returned question:
      half-applied answer is worse than a re-asked one.
 3. **Derive the operations** implied by `answerKey` (and `answerText`, if the note
    changes anything). Stay inside the vocabulary in constraint 4.
-4. **Archive before deleting.** If a `pinnedDelete` applies, first post the section's
+
+   Derive them from the issue's **current** state, not from the option's `description`.
+   That text was written when the question was asked and can be stale, or simply wrong —
+   it is a summary for a human deciding, not a spec for you to execute.
+4. **Re-evaluate `fleet-safe` — never inherit it from the answer.**
+
+   An answer resolves *one* fork. `fleet-safe` asserts the ticket passes **every**
+   `fleet-prep` step-2 check, most of which the question never touched. So if the chosen
+   option implies `fleet-safe`, invoke the `fleet-prep` skill and confirm against current
+   state that the issue:
+
+   - is executable, not a container (`children` empty **and** the body is not an epic)
+   - has no unresolved `blocked-by`
+   - now has a single decided path — including any fork the question did *not* cover
+   - does not collide on files with anything already in `Todo` and `fleet-safe`; if it
+     does, add the `blocked-by` relation instead of promoting it into the collision
+   - carries `draft-merge` too, if constraint 6 applies
+
+   **If any check fails, promote to `Todo` and withhold `fleet-safe`.** Say so plainly in
+   the audit comment — `fleet-safe withheld: <which check failed and why>` — so a human
+   can see the decision landed and why the ticket still is not claimable. Withholding is
+   a normal outcome, not a failure; never relax a check to honour what the card promised.
+5. **Archive before deleting.** If a `pinnedDelete` applies, first post the section's
    full current text as a Linear comment — prefixed
    `Archived by decision inbox before removal (<date>):` — and confirm it posted.
    Only then remove that section. If the comment fails, skip the delete entirely.
-5. **Apply**, then post the audit comment:
+6. **Apply**, then post the audit comment:
    `Applied your <date> answer: <option label>. Operations: <list>.`
-6. **Record it.**
+   Append `fleet-safe withheld: <reason>` when step 4 withheld it.
+7. **Record it.**
    `POST /api/questions/<id>/applied` with `{ "ops": [...], "subjectHash": "<hash AFTER your writes>" }`
 
    The post-write hash matters: without it your own edit looks like a material change
    and phase B re-asks the question you just answered.
-7. On an unexpected failure mid-apply, `POST /api/questions/<id>/failed` with
+8. On an unexpected failure mid-apply, `POST /api/questions/<id>/failed` with
    `{ "detail": "<what happened>" }` and carry on. Never leave a question silently stuck.
 
 ---
@@ -144,9 +167,9 @@ curl -s -X POST http://localhost:5900/api/questions \
     "title": "CI paths-filter: should client-only changes run the compose E2E?",
     "body": "RET-381 lists three options and asks for a policy decision. Running the full compose E2E on every client/src change costs ~18 min x 3 shards; RET-357 narrowed the filter deliberately, and a gating regression then slipped through on RET-375.",
     "options": [
-      { "key": "widen",    "label": "Widen the filter to all client/src", "description": "Safest, most expensive. Sets Todo + fleet-safe." },
-      { "key": "subset",   "label": "Only gating-critical client paths",  "description": "Tier-limits util, session stage components, feature-gate components." },
-      { "key": "accept-3", "label": "Accept option 3 and close",          "description": "Rely on the nightly; closes RET-381 as wont-do." }
+      { "key": "widen",    "label": "Widen the filter to all client/src", "description": "Safest, most expensive: every client change pays ~18 min x 3 shards. Removes the Consideration block (archived to a comment first) and sets Todo — plus fleet-safe if it still passes the fleet-prep checks." },
+      { "key": "subset",   "label": "Only gating-critical client paths",  "description": "Tier-limits util, session stage components, feature-gate components. Same writes as above." },
+      { "key": "accept-3", "label": "Accept option 3 and close",          "description": "Rely on the nightly, per RET-381's own DoD. Sets state Cancelled." }
     ],
     "pinnedDelete": { "heading": "Consideration (founder call — cost tradeoff)", "contentHash": "<sha256 of that section>" },
     "subjectHash": "<sha256 of the section this question came from>"
@@ -164,6 +187,10 @@ Rules for the content:
 - **Options** are concrete and mutually exclusive, 2–4 of them, each `description`
   saying what will actually happen — including any state or label change. One option
   should usually be the do-nothing/close path.
+- **Never promise `fleet-safe` outright.** Phase A re-checks it against current state and
+  may withhold it, so a description that says "sets Todo + fleet-safe" is writing a cheque
+  the applier is right to refuse. Phrase it as conditional — *"sets Todo, and fleet-safe
+  if it still passes the fleet-prep checks"* — and never imply the label is guaranteed.
 - **`pinnedDelete`** names the section that becomes redundant once decided, with the
   sha256 of its current content. Omit it when nothing should be removed.
 - **`subjectHash`** is the sha256 of the section the question was derived from.

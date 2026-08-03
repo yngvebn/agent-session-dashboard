@@ -139,7 +139,7 @@ deliberately rather than re-litigated by accident.
 | 10 | **Job records the post-write hash as the new baseline** | Closes a real bug in #6 + #9: the job's own delete changes the description, which would otherwise re-trigger the question it just answered — the duplicate-flood failure mode arriving by the front door. |
 | 11 | **Hygiene answers acknowledge and close, logged only** | Findings that map to no Linear operation write nothing to Linear. Honest about the fact that you just wanted to know. |
 | 12 | **Passive delivery via the existing SSE stream** | No notifications. The whole point is a calm coffee-break flow, and that notification path has already been tuned twice for noise (see `cae4beb`, `e356e9d`). |
-| 13 | **May apply `fleet-safe`** | Fastest path from decision to running code. See the risk note below — this is the one decision with a tail worth understanding. |
+| 13 | **May apply `fleet-safe`, but must re-earn it at apply time** | Fastest path from decision to running code. See the risk note below — this is the one decision with a tail worth understanding. Amended 2026-08-03: the label is never inherited from the answer, see below. |
 | 14 | **One-hop apply** — no proposal/confirm step | Both writes (section delete, label/state change) are recoverable and fully audited, so a confirmation step buys little. |
 | 15 | **Heartbeat row + stale indicator** | Every run records time and outcome; the card list shows a quiet "last checked Nh ago" that turns visibly stale past a threshold. Catches silent death — otherwise an empty inbox reads as "nothing to decide". |
 | 16 | **Stale pre-flight discards the answer and re-asks with new context** | Correctness over forward progress. A half-applied answer is harder to reason about later than a re-answered one. |
@@ -156,6 +156,32 @@ writes the code → create-pr.ps1 auto-merges → master auto-deploys to dev
 
 One click on a browser tab to deployed code, with no other human in the path. This is a
 deliberate choice for a single-operator machine, not an oversight.
+
+### `fleet-safe` is re-earned, never inherited
+
+The first build got this wrong, and it is worth recording why. Options were written
+promising `fleet-safe` ("*sets state Todo and labels testing, Bug, fleet-safe*") and phase
+A simply applied what the option said. Three problems with that:
+
+1. **A question resolves one check; the label asserts five.** `fleet-prep` step 2 tests
+   executable-not-container, unblocked, single decided path, no in-wave file collision,
+   and the risk gate. A question usually settles only the third. Promising the label on
+   that basis silently claims the other four — never verified. RET-433 would have been
+   promoted without anyone noticing it collides with RET-422; both add e2e specs.
+2. **The promise is stale by construction.** It is written when the question is asked and
+   applied whenever the answer arrives, possibly days later. A `blocked-by` can appear; a
+   sibling can be promoted into the same files.
+3. **The promise can be wrong.** RET-21's option claimed that dropping the `Epic` *label*
+   means "`HasChildren` is no longer the thing protecting it". `HasChildren` reads
+   `children.nodes` and never looks at labels. Plausible-sounding and false — which is the
+   general argument for the applier deriving operations from current state rather than
+   trusting card text.
+
+So phase A now re-runs the `fleet-prep` checks before applying `fleet-safe`, and
+**withholds it** — promoting to `Todo` only — if any fail, recording
+`fleet-safe withheld: <reason>` in the audit comment. Withholding is a normal outcome, not
+a failure. Option descriptions must phrase the label as conditional; a card that promises
+it outright is writing a cheque the applier is right to refuse.
 
 **Required mitigation, no latency cost:** `fleet-prep` already codifies `draft-merge` for
 tickets touching billing, payments, auth, tenant isolation or GDPR/erasure, and
