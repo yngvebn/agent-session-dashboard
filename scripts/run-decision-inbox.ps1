@@ -110,8 +110,27 @@ if ($open.Count -ge $Cap -and $pending.Count -eq 0) {
 
 $claude = (Get-Command claude -ErrorAction SilentlyContinue).Source
 if (-not $claude) {
-    Record-Run -Outcome 'failed' -Detail 'claude CLI not found on PATH'
-    throw 'claude CLI not found on PATH.'
+    # A shell opened before the CLI was installed has a stale PATH — PATH changes never
+    # propagate into running processes. Fall back to the persistent value so a manual run
+    # from an old terminal still works. (Under the scheduler this rarely triggers: the
+    # task's own environment is built from the persistent PATH to begin with.)
+    $persistentPath = @(
+        [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+        [Environment]::GetEnvironmentVariable('PATH', 'User')
+    ) -join ';'
+
+    foreach ($dir in ($persistentPath -split ';' | Where-Object { $_ })) {
+        $candidate = Join-Path $dir 'claude.exe'
+        if (Test-Path $candidate) { $claude = $candidate; break }
+    }
+
+    if ($claude) {
+        Write-Log "claude not on this shell's PATH; using $claude from the persistent PATH."
+    }
+    else {
+        Record-Run -Outcome 'failed' -Detail 'claude CLI not found on PATH (checked process and persistent PATH)'
+        throw 'claude CLI not found on PATH.'
+    }
 }
 
 if ($ConfigDir) {

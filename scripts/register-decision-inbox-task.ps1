@@ -48,8 +48,36 @@ if ($Unregister) {
 $pwsh = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
 if (-not $pwsh) { throw 'pwsh not found on PATH.' }
 
-$claude = (Get-Command claude -ErrorAction SilentlyContinue).Source
-if (-not $claude) { Write-Warning 'claude CLI not on PATH — the task will fail until it is.' }
+# Resolve `claude` the way the TASK will see it, not the way this shell does.
+#
+# Checking $env:PATH here gives the wrong answer in both directions. A shell opened
+# before the CLI was installed has a stale PATH and reports a scary false alarm, while
+# a shell with a session-local PATH addition reports success for something the
+# scheduler will never find. Task Scheduler builds its environment from the persistent
+# Machine + User PATH, so that is what to test.
+$persistentPath = @(
+    [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+    [Environment]::GetEnvironmentVariable('PATH', 'User')
+) -join ';'
+
+$claudeForTask = pwsh -NoProfile -Command "`$env:PATH = '$($persistentPath -replace "'", "''")'
+    (Get-Command claude -ErrorAction SilentlyContinue).Source"
+$claudeHere = (Get-Command claude -ErrorAction SilentlyContinue).Source
+
+if (-not $claudeForTask) {
+    if ($claudeHere) {
+        # The dangerous direction: passes by hand, fails on schedule.
+        Write-Warning "claude resolves in THIS shell ($claudeHere) but not from the persistent PATH."
+        Write-Warning 'The scheduled task will not find it. Add its directory to the User PATH permanently.'
+    }
+    else {
+        Write-Warning 'claude CLI not found on the persistent PATH — the task will fail until it is.'
+    }
+}
+elseif (-not $claudeHere) {
+    Write-Host "  Note    : claude not on this shell's PATH, but the task will find it at $claudeForTask." -ForegroundColor DarkGray
+    Write-Host "            (Your shell predates the install; a new terminal will pick it up.)" -ForegroundColor DarkGray
+}
 
 # Verify the thing most likely to be missing on a fresh machine, since a job that
 # cannot authenticate produces a heartbeat full of failures and nothing else.
