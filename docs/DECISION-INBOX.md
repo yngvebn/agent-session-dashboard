@@ -66,7 +66,47 @@ Task Scheduler wins by elimination: trigger on logon **plus** repeat every hour,
 only when user is logged on", running **as the user account**. That last part matters —
 see auth below.
 
-### Auth — verified working
+### What the job inherits from the repo — and what it doesn't
+
+Because the Claude session's cwd is the target repo, a lot of context arrives for free and
+does **not** need restating in the prompt. Probed directly on 2026-08-03; the session
+confirmed it already knows the tracker and CLI (`linctl`, team `RET`, never
+`mcp__linear*`), that master is off-limits, and the project persona.
+
+Two things it does *not* get, which is why the prompt is not merely a duplicate:
+
+* **Skill bodies are not loaded.** The session sees each skill's name and description
+  only — *"the body isn't loaded until the skill is invoked"*. So `fleet-prep`'s detection
+  checklist and its `draft-merge` rule are absent by default. The prompt therefore
+  **invokes** `fleet-prep` for detections rather than carrying a copy that would drift,
+  and restates only the `draft-merge` rule, which is too important to depend on a skill
+  invocation succeeding.
+* **Constraints that *subtract*.** Nothing in the repo's context says "don't fix what you
+  find" — rather the opposite. The typed-operation vocabulary is deliberately narrower
+  than what `CLAUDE.md` permits, so it has to be spelled out.
+
+### Auth — two separate credentials, both easy to get wrong
+
+#### `CLAUDE_CONFIG_DIR` — the one that bit
+
+`CLAUDE_CONFIG_DIR` is set **per-process in interactive shells and does not exist at User
+or Machine scope.** A scheduled task inherits nothing and falls back to `~/.claude`, which
+on this machine is a different config root with **an expired OAuth session and a
+different memory set**. Manual runs passed because they inherited the variable; every
+scheduled run would have failed on auth.
+
+Both the wrapper and the registration script now take `-ConfigDir`, and the registration
+script bakes the current value into the task's arguments rather than trusting the
+environment. Verified 2026-08-03 with the variable stripped from the launching process:
+the run authenticated and completed. Pointed deliberately at the unauthenticated root, it
+records `failed` with `Claude auth failed (CLAUDE_CONFIG_DIR=…)` rather than a generic
+parse error — auth expiry is the failure most likely to appear out of nowhere and the
+least obvious from a generic message.
+
+Note also that `Start-Job` spawns a fresh process, so the variable is set again inside the
+job block; setting it in the parent alone is not enough.
+
+#### `linctl` — verified working
 
 `linctl` credentials live in `~/.linctl-auth.json` (a 67-byte per-user file), **not** an
 environment variable. Verified 2026-08-03: `linctl auth status` authenticated

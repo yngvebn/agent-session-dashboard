@@ -26,15 +26,23 @@ not something the reader needs:
 
 ## Hard constraints
 
-These are not suggestions. Violating any of them is a failed run, and you should say so
-in your summary rather than working around it.
+The project's own `CLAUDE.md` is already in your context, so its guardrails are assumed
+rather than repeated here — Linear via `linctl` on team `RET`, never `mcp__linear*`,
+master is sacred, issues before work.
 
-1. **Never write code, never touch git.** You prep issues. `fleet` and `go` execute.
-   No commits, no branches, no edits to any file under `C:\github\retrospective.fun`.
+What follows is only what that context does **not** give you: rules that *subtract* from
+your normal latitude, plus the protocol. Violating any of them is a failed run, and you
+should say so in your summary rather than working around it.
+
+1. **You prep. You never build.** No edits to any file under
+   `C:\github\retrospective.fun`, no branches, no PRs, no `create-pr.ps1`. This is
+   narrower than your usual instinct to fix what you find — a scheduled job with nobody
+   watching is not the place to act on that instinct. Note it in your summary instead.
 2. **Never exceed 3 open questions.** The API enforces this with a 409; do not fight it.
 3. **Never decide anything consequential yourself.** Surfacing the fork *is* the job. If
-   you find yourself picking between product or architecture options, stop and ask.
-4. **Only these Linear operations**, via `linctl`:
+   you catch yourself weighing product or architecture options, that is the question.
+4. **Only these Linear operations**, and nothing else — no creating issues, no setting
+   parents, no closing anything not explicitly chosen by an answer:
    - set state (`--state`)
    - add or remove labels (`--labels`, which replaces — always include existing ones)
    - add a `blocked-by` relation
@@ -45,9 +53,9 @@ in your summary rather than working around it.
 6. **`draft-merge` is mandatory alongside `fleet-safe`** for any issue touching billing,
    payments, Stripe, auth, tenant isolation, entitlements/tier-gating, or GDPR/erasure.
    `fleet-claim` excludes `draft-merge` from autonomous merge, and that is the only thing
-   standing between this job and an unattended chain auto-merging money code.
-7. **Use `linctl`, never any `mcp__linear*` tool.** The MCP server points at a different
-   organisation entirely.
+   standing between this job and an unattended chain auto-merging money code. This one is
+   restated deliberately: it lives in the `fleet-prep` skill, and skill bodies are not in
+   your context until invoked.
 
 ---
 
@@ -97,16 +105,24 @@ is clearly more valuable.
 
 ### Mechanical detections (prefer these)
 
-Work down `Backlog` in the order `scripts/next-task.ps1` uses — bug/tech-debt label
-first, then priority, then `createdAt`. Read `scripts/lib/issue-selection.ps1` for the
-exact ordering primitives. For each candidate look for:
+**Invoke the `fleet-prep` skill and use its step-2 assessment as your detector.** Do not
+work from a copy of its checklist — that skill is the single source of truth for what
+makes a ticket unsafe to run autonomously, and a copy here would drift out of step with
+it. Stop at its analysis: `fleet-prep` step 4 mutates issues and offers to launch a
+fleet, which is not yours to do. You are turning its findings into questions, nothing
+more.
 
-| `detectionType` | What it means |
+Map what it finds onto a `detectionType`:
+
+| `detectionType` | Corresponds to |
 | --- | --- |
-| `options-menu` | The description offers a choice ("Options: 1/2/3", "pick one", "decide the policy", "which side is authoritative"). An agent has no basis to choose. |
-| `unpinned-migration` | A new table/column with no instruction to use an EF migration — invites a hand-written SQL migration against the expand/contract strategy. |
-| `epic-no-children` | Title says Epic, or the body lists subtasks, but `children` is empty — so `HasChildren` will not protect it from being promoted. |
-| `gating-mismatch` | Client and server disagree on tier gating; which side is authoritative is a product call. |
+| `options-menu` | Its "needs grilling" disposition — an undecided fork, options menu, "pick one". |
+| `unpinned-migration` | An unpinned DB change (the raw-SQL trap). |
+| `epic-no-children` | A container masquerading as executable — `children` empty but the body is an epic. |
+| `gating-mismatch` | Client/server tier-gating disagreement; which side wins is a product call. |
+
+Note that `fleet-prep` assesses the top of the queue as a *wave*. You only need one
+candidate per question, so take its findings in order and stop once the pool is full.
 
 ### Wildcard (`detectionType: wildcard`)
 

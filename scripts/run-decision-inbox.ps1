@@ -17,6 +17,14 @@
     Working directory for the Claude session. Must be the retrospective.fun checkout
     so the job has code context when a question needs it.
 
+.PARAMETER ConfigDir
+    Value to force into CLAUDE_CONFIG_DIR. This is NOT cosmetic. The variable is set
+    per-process in interactive shells and does not exist at User or Machine scope, so
+    a task launched by the scheduler inherits nothing and falls back to ~/.claude —
+    a different config root, with its own credentials and its own memory. On this
+    machine that root's OAuth session is expired, so every scheduled run would have
+    failed on auth while manual runs passed. Pinning it is the fix.
+
 .PARAMETER DryRun
     Runs the pre-flight and prints what it would do, without invoking Claude and
     without recording a heartbeat.
@@ -26,6 +34,7 @@ param(
     [string]$DashboardUrl = 'http://localhost:5900',
     [string]$RepoPath     = 'C:\github\retrospective.fun',
     [string]$JobName      = 'decision-inbox',
+    [string]$ConfigDir    = $env:CLAUDE_CONFIG_DIR,
     [int]$Cap             = 3,
     [int]$TimeoutMinutes  = 20,
     [switch]$DryRun
@@ -105,6 +114,20 @@ if (-not $claude) {
     throw 'claude CLI not found on PATH.'
 }
 
+if ($ConfigDir) {
+    if (-not (Test-Path $ConfigDir)) {
+        Record-Run -Outcome 'failed' -Detail "ConfigDir does not exist: $ConfigDir"
+        throw "ConfigDir not found: $ConfigDir"
+    }
+    $env:CLAUDE_CONFIG_DIR = $ConfigDir
+    Write-Log "CLAUDE_CONFIG_DIR = $ConfigDir"
+}
+else {
+    # Better to say so than to silently use whichever root happens to be default —
+    # they can differ in credentials, memory and permissions.
+    Write-Warning 'No ConfigDir given; using the default Claude config root. Pass -ConfigDir if this machine uses a non-default one.'
+}
+
 if ($DryRun) {
     Write-Log "DRY RUN — would invoke: $claude -p (prompt from $promptPath) in $RepoPath"
     exit 0
@@ -124,14 +147,17 @@ try {
     # no Write/Edit, so the job cannot modify the repo even by accident, which is
     # also constraint 1 in the prompt enforced mechanically rather than by trust.
     $job = Start-Job -ScriptBlock {
-        param($claude, $prompt, $repoPath, $transcript)
+        param($claude, $prompt, $repoPath, $transcript, $configDir)
         Set-Location $repoPath
+        # Start-Job spawns a fresh process — the parent's $env: assignment above does
+        # not carry over, so set it again here.
+        if ($configDir) { $env:CLAUDE_CONFIG_DIR = $configDir }
         $prompt | & $claude -p `
             --permission-mode bypassPermissions `
             --allowedTools 'Bash' 'Read' 'Grep' 'Glob' `
             --disallowedTools 'Write' 'Edit' 'NotebookEdit' `
             --output-format text 2>&1 | Tee-Object -FilePath $transcript
-    } -ArgumentList $claude, $prompt, $RepoPath, $transcript
+    } -ArgumentList $claude, $prompt, $RepoPath, $transcript, $ConfigDir
 
     if (-not (Wait-Job $job -Timeout ($TimeoutMinutes * 60))) {
         Stop-Job $job -ErrorAction SilentlyContinue
@@ -152,6 +178,15 @@ finally {
 # Missing or malformed output is reported rather than guessed at.
 
 $summary = ($output -split "`n" | Where-Object { $_ -match 'applied=\d+' } | Select-Object -Last 1)
+
+# Auth is the failure most likely to appear out of nowhere (token expiry, wrong config
+# root) and the least obvious from a generic "no summary" message. Name it.
+if ($output -match 'Failed to authenticate|OAuth session expired|Invalid API key') {
+    $detail = "Claude auth failed (CLAUDE_CONFIG_DIR=$($ConfigDir ?? '<default>')). Run 'claude' interactively to re-authenticate that config root."
+    Record-Run -Outcome 'failed' -Detail $detail
+    Write-Warning $detail
+    exit 1
+}
 
 if (-not $summary) {
     $tail = ($output -split "`n" | Where-Object { $_.Trim() } | Select-Object -Last 3) -join ' / '

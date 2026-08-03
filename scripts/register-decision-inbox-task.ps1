@@ -24,6 +24,7 @@ param(
     [string]$RepoPath        = 'C:\github\retrospective.fun',
     [string]$DashboardUrl    = 'http://localhost:5900',
     [int]$IntervalMinutes    = 60,
+    [string]$ConfigDir       = $env:CLAUDE_CONFIG_DIR,
     [switch]$Unregister
 )
 
@@ -56,6 +57,18 @@ if (-not (Test-Path $authFile)) {
     Write-Warning "No $authFile — run 'linctl auth' before relying on this task."
 }
 
+# CLAUDE_CONFIG_DIR is per-process in interactive shells and absent at User/Machine
+# scope, so a scheduled task inherits nothing and silently falls back to ~/.claude —
+# a different config root with its own credentials. Bake the current value into the
+# task arguments rather than hoping the environment provides it.
+if (-not $ConfigDir) {
+    Write-Warning 'CLAUDE_CONFIG_DIR is not set in this shell. The task will use the default Claude config root.'
+    Write-Warning "If that root is not authenticated, every run fails on auth. Re-run with -ConfigDir '<path>' to pin it."
+}
+elseif (-not (Test-Path $ConfigDir)) {
+    throw "ConfigDir does not exist: $ConfigDir"
+}
+
 $arguments = @(
     '-NoProfile'
     '-NonInteractive'
@@ -63,7 +76,7 @@ $arguments = @(
     '-File', "`"$runner`""
     '-RepoPath', "`"$RepoPath`""
     '-DashboardUrl', "`"$DashboardUrl`""
-) -join ' '
+) + $(if ($ConfigDir) { @('-ConfigDir', "`"$ConfigDir`"") } else { @() }) -join ' '
 
 $action = New-ScheduledTaskAction -Execute $pwsh -Argument $arguments -WorkingDirectory $PSScriptRoot
 
@@ -103,6 +116,7 @@ Write-Host "Registered '$TaskName': every $IntervalMinutes min, plus 3 min after
 Write-Host "  Runs as : $env:USERDOMAIN\$env:USERNAME (interactive only)"
 Write-Host "  Repo    : $RepoPath"
 Write-Host "  Runner  : $runner"
+Write-Host "  Config  : $(if ($ConfigDir) { $ConfigDir } else { '<Claude default>' })"
 Write-Host ''
 Write-Host 'Verify with:' -ForegroundColor Cyan
 Write-Host "  Start-ScheduledTask -TaskName '$TaskName'"
