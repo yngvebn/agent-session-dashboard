@@ -56,9 +56,11 @@
             <span class="inbox-label">Decisions ({{ openQuestions().length }})</span>
             <span class="inbox-heartbeat" [class.stale]="heartbeatStale()">{{ heartbeatLabel() }}</span>
           </div>
-          @for (question of openQuestions(); track question.id) {
-            <app-question-card [question]="question" />
-          }
+          <div class="inbox-cards">
+            @for (question of openQuestions(); track question.id) {
+              <app-question-card [question]="question" />
+            }
+          </div>
           @if (pendingQuestions().length > 0) {
             <p class="inbox-pending">
               {{ pendingQuestions().length }} answered, waiting for the next run to apply.

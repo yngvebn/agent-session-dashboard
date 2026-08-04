@@ -214,7 +214,23 @@
   flex-direction: column;
   gap: 0.6rem;
   margin-bottom: 1.25rem;
-  max-width: 46rem;
+
+  // Capped so the grid tops out at three columns. The open-question cap is 3, so
+  // wider would only ever stretch cards, never fit another one.
+  max-width: 76rem;
+}
+
+.inbox-cards {
+  display: grid;
+  // Same idiom as .sessions-grid, with a wider floor — these cards carry prose,
+  // not status chips, and get unreadable much below this. 21rem is chosen against
+  // the real layout: with the sidebar taking its share, a 1100px window leaves
+  // 713px here, and two columns need 2 x floor + gap. A 24rem floor missed that by
+  // 67px and dropped to a single column; 21rem needs 684px and fits.
+  grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+  gap: 0.75rem;
+  // Cards keep their natural height instead of stretching to the tallest in the row.
+  align-items: start;
 }
 
 .inbox-header {
