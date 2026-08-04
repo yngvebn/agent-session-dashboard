@@ -117,6 +117,7 @@ public class SseService
         q.Title,
         q.Body,
         Options = QuestionService.ReadJson(q.Options),
+        Recommendation = QuestionService.ReadJson(q.Recommendation),
         PinnedDelete = QuestionService.ReadJson(q.PinnedDelete),
         q.SubjectHash,
         q.State,

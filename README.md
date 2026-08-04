@@ -125,7 +125,11 @@ The `● Live` indicator in the top-right confirms the SSE stream is connected. 
 
 An async decision queue for stalled work items, rendered above the session grid. A
 scheduled job posts up to three questions, you answer them on the startpage, and a later
-run applies the answers. Full design and rationale: **[docs/DECISION-INBOX.md](docs/DECISION-INBOX.md)**.
+run applies the answers. Each question carries the job's own recommendation and the
+reasoning behind it, so you're reviewing a proposal rather than starting cold — and a
+recommendation you disagree with tells you which guardrail to go fix. It stays advisory:
+the applier acts on your answer and never on its own suggestion. Full design and
+rationale: **[docs/DECISION-INBOX.md](docs/DECISION-INBOX.md)**.
 
 The dashboard half needs no setup — the tables and endpoints ship with the container. To
 turn the job on:

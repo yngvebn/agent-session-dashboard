@@ -41,6 +41,12 @@ should say so in your summary rather than working around it.
 2. **Never exceed 3 open questions.** The API enforces this with a 409; do not fight it.
 3. **Never decide anything consequential yourself.** Surfacing the fork *is* the job. If
    you catch yourself weighing product or architecture options, that is the question.
+
+   **Recommending is not deciding, and it is required.** Every question carries a
+   `recommendation` naming the option you would pick and why (see phase B). The fork still
+   goes to the human with every option intact — you are showing your work so they can
+   either lean on it or see which of their guardrails is arguing the wrong way. Never let
+   the recommendation narrow the options you offer, and never treat it as an answer.
 4. **Only these Linear operations**, and nothing else — no creating issues, no setting
    parents, no closing anything not explicitly chosen by an answer:
    - set state (`--state`)
@@ -81,6 +87,12 @@ For each returned question:
    Derive them from the issue's **current** state, not from the option's `description`.
    That text was written when the question was asked and can be stale, or simply wrong —
    it is a summary for a human deciding, not a spec for you to execute.
+
+   **Ignore `recommendation` entirely here.** It was advice to the human, who has now
+   either taken it or overruled it; either way `answerKey` is the decision. Never fall back
+   to the recommended key when an answer looks incomplete or surprising — that turns
+   one-hop apply into no-hop apply. If `answerKey` makes no sense against current state,
+   `POST /failed` and say so.
 4. **Re-evaluate `fleet-safe` — never inherit it from the answer.**
 
    An answer resolves *one* fork. `fleet-safe` asserts the ticket passes **every**
@@ -171,6 +183,11 @@ curl -s -X POST http://localhost:5900/api/questions \
       { "key": "subset",   "label": "Only gating-critical client paths",  "description": "Tier-limits util, session stage components, feature-gate components. Same writes as above." },
       { "key": "accept-3", "label": "Accept option 3 and close",          "description": "Rely on the nightly, per RET-381's own DoD. Sets state Cancelled." }
     ],
+    "recommendation": {
+      "key": "subset",
+      "rationale": "Catches the class of regression RET-375 actually was, without paying 18 min on every client change. Widening is insurance against a failure that has not happened yet.",
+      "confidence": "medium"
+    },
     "pinnedDelete": { "heading": "Consideration (founder call — cost tradeoff)", "contentHash": "<sha256 of that section>" },
     "subjectHash": "<sha256 of the section this question came from>"
   }'
@@ -187,6 +204,16 @@ Rules for the content:
 - **Options** are concrete and mutually exclusive, 2–4 of them, each `description`
   saying what will actually happen — including any state or label change. One option
   should usually be the do-nothing/close path.
+- **`recommendation`** is required, and names one of your own option keys. `rationale` is
+  ~40 words on **why that option over the others** — the tradeoff you actually weighed, not
+  a restatement of the option's `description`, which already says what happens. Same
+  human-facing rules as the body: no notes to the applier, no meta-commentary. Set
+  `confidence` to `low` / `medium` / `high` and mean it — a confident recommendation that
+  turns out wrong is the most useful thing this field produces, because it points at a
+  guardrail worth changing. Use `low` freely; a hedge that reads honestly beats a
+  recommendation that sounds surer than you are.
+- **A recommendation never promises `fleet-safe` either**, for the same reason option
+  descriptions cannot, and it never argues for skipping a check.
 - **Never promise `fleet-safe` outright.** Phase A re-checks it against current state and
   may withhold it, so a description that says "sets Todo + fleet-safe" is writing a cheque
   the applier is right to refuse. Phrase it as conditional — *"sets Todo, and fleet-safe

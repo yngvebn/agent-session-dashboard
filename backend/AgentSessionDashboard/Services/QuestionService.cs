@@ -72,6 +72,7 @@ public class QuestionService(SessionDbContext db, SseService sse)
                 Title = req.Title,
                 Body = req.Body,
                 Options = Serialize(req.Options),
+                Recommendation = req.Recommendation?.ToJsonString(),
                 PinnedDelete = req.PinnedDelete?.ToJsonString(),
                 SubjectHash = req.SubjectHash,
                 State = QuestionStates.Open,
@@ -205,6 +206,7 @@ public class QuestionService(SessionDbContext db, SseService sse)
         q.Title = req.Title;
         q.Body = req.Body;
         q.Options = Serialize(req.Options);
+        q.Recommendation = req.Recommendation?.ToJsonString();
         q.PinnedDelete = req.PinnedDelete?.ToJsonString();
         q.SubjectHash = req.SubjectHash;
         q.Source = req.Source;
@@ -219,6 +221,11 @@ public class QuestionService(SessionDbContext db, SseService sse)
         {
             ["answerKey"] = q.AnswerKey,
             ["answerText"] = q.AnswerText,
+            // Called before ApplyContent overwrites it, so this is the recommendation
+            // as it stood when the superseded answer was given. A recommendation that
+            // moves when the subject moves is the signal that what produced it is
+            // worth a look.
+            ["recommendedKey"] = RecommendedKey(q.Recommendation),
             ["answeredAt"] = q.AnsweredAt?.ToString("O"),
             ["appliedAt"] = q.AppliedAt?.ToString("O"),
             ["state"] = q.State,
@@ -227,6 +234,16 @@ public class QuestionService(SessionDbContext db, SseService sse)
         });
         q.History = history.ToJsonString();
     }
+
+    /// <summary>
+    /// The option key the producer recommended, or null. Never throws: a
+    /// malformed recommendation degrades to no recommendation rather than
+    /// costing us the question it was attached to.
+    /// </summary>
+    private static string? RecommendedKey(string? recommendation) =>
+        ReadJson(recommendation) is JsonObject obj && obj.TryGetPropertyValue("key", out var key)
+            ? key?.ToString()
+            : null;
 
     private static JsonArray ParseArray(string? json)
     {
@@ -253,5 +270,6 @@ public record UpsertQuestionRequest(
     string Title,
     string Body,
     JsonNode? Options,
+    JsonNode? Recommendation,
     JsonNode? PinnedDelete,
     string? SubjectHash);

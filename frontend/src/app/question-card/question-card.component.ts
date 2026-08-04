@@ -17,6 +17,19 @@ export class QuestionCardComponent {
 
   readonly options = computed(() => this.question().options ?? []);
 
+  readonly recommendation = computed(() => this.question().recommendation ?? null);
+
+  /**
+   * What to call the recommended option. Falls back to the raw key when the
+   * producer named something that isn't on the card — a mismatch costs the
+   * marker, not the rationale, which is the part worth reading anyway.
+   */
+  readonly recommendedLabel = computed(() => {
+    const key = this.recommendation()?.key;
+    if (!key) return null;
+    return this.options().find((o) => o.key === key)?.label ?? key;
+  });
+
   readonly subjectUrl = computed(() => {
     const id = this.question().subjectId;
     return id && /^RET-\d+$/.test(id)
@@ -29,6 +42,10 @@ export class QuestionCardComponent {
    * looking operation — worth seeing before you pick, not after.
    */
   readonly deleteTarget = computed(() => this.question().pinnedDelete?.heading ?? null);
+
+  isRecommended(key: string): boolean {
+    return this.recommendation()?.key === key;
+  }
 
   toggleDescription(key: string): void {
     this.expanded.update((current) => (current === key ? null : key));

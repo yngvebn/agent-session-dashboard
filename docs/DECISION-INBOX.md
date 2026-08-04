@@ -143,6 +143,7 @@ deliberately rather than re-litigated by accident.
 | 14 | **One-hop apply** — no proposal/confirm step | Both writes (section delete, label/state change) are recoverable and fully audited, so a confirmation step buys little. |
 | 15 | **Heartbeat row + stale indicator** | Every run records time and outcome; the card list shows a quiet "last checked Nh ago" that turns visibly stale past a threshold. Catches silent death — otherwise an empty inbox reads as "nothing to decide". |
 | 16 | **Stale pre-flight discards the answer and re-asks with new context** | Correctness over forward progress. A half-applied answer is harder to reason about later than a re-answered one. |
+| 17 | **Every question carries a recommendation — advisory, never an input to apply** | Added 2026-08-04. A bare fork makes the human start cold on a decision the producer just finished analysing. The recommendation and its rationale turn a 30-second answer into a 30-second *review*, and a recommendation you disagree with names the guardrail to go fix. See below for why it is safe. |
 
 ### Risk note on decision 13
 
@@ -190,11 +191,56 @@ apply `draft-merge` alongside it for those same categories. That keeps the fast 
 and removes the one tail outcome worth regretting — an unattended chain auto-merging
 entitlement code. `RET-376` is exactly such a ticket.
 
+### Recommendations are advisory (decision 17)
+
+`{ key, rationale, confidence }`, stored per question. Three properties keep it from
+eroding what the rest of this design protects:
+
+1. **It does not narrow the fork.** All 2–4 options survive, phrased as they would have
+   been without a recommendation. Constraint 3 in the prompt — *never decide anything
+   consequential yourself* — was amended to say so explicitly, because read cold it looks
+   like it forbids this.
+2. **Phase A never reads it.** The applier derives operations from `answerKey` alone. If it
+   ever fell back to the recommended key on a surprising answer, decision 14's one-hop
+   apply would quietly become no-hop apply: cron recommends, cron applies, nobody clicks.
+   Prompt-enforced, and worth checking on any change to phase A.
+3. **`rationale` is a bigger version of the surface that already burned us.** The
+   `fleet-safe` post-mortem below is about confident option text that was
+   plausible-sounding and false. A free-text "why I'd pick this" is more room for the same
+   failure, so it inherits the same rules: human-facing only, ~40 words, never promises a
+   label phase A has to re-earn, never argues for skipping a check.
+
+`confidence` exists for calibration rather than decoration. A `high` recommendation that
+turns out wrong is the most valuable output of this field — it points at a specific
+guardrail that is confidently wrong, which is much easier to fix than a vague sense that
+the job's judgement is off.
+
+Rendered as a visible block above the options, not behind the `?` disclosure where the
+option descriptions live: those say *what happens*, this says *why*, and the why is what
+you need before choosing. The recommended option gets a quiet marker and **not** primary
+button styling — a recommendation styled as the obvious click trains rubber-stamping,
+which is the opposite of the point.
+
+`PushHistory` records the recommendation's key alongside the superseded answer, so a
+re-ask preserves what was recommended the first time. That is the drift signal: a
+recommendation that flips when the ticket is edited says something about the detection,
+not just the ticket.
+
+**Degrades rather than rejects.** A `recommendation.key` naming no existing option is not
+validated away, and does not fail the POST. The endpoint's `400`s cover identity fields
+only (`source`, `detectionType`, `title`) — the ones without which the row is meaningless
+— and everything else in the store degrades gracefully. Losing a legitimately-detected
+fork because the producer fumbled one string, in a run with nobody watching, costs more
+than a card that renders its rationale without a marker.
+
 ## Data model
 
 Follows the existing idiom in `Program.cs`: `EnsureCreated()` plus idempotent
 `CREATE TABLE IF NOT EXISTS`, the same way `SessionEvents` and `Shortcuts` were added.
-No migration framework. Roughly 15 lines of DDL.
+No migration framework. Roughly 15 lines of DDL. Columns added after the table shipped
+use the other half of that idiom — a `try { ALTER TABLE … ADD COLUMN } catch { }`, as the
+`Sessions` columns already do — since `IF NOT EXISTS` does nothing for a table that
+already exists. `Recommendation` was added this way.
 
 ```sql
 CREATE TABLE IF NOT EXISTS "Questions" (
@@ -207,6 +253,7 @@ CREATE TABLE IF NOT EXISTS "Questions" (
     "Title"         TEXT NOT NULL,
     "Body"          TEXT NOT NULL,   -- markdown context shown on the card
     "Options"       TEXT NOT NULL,   -- JSON [{key,label,description}]
+    "Recommendation" TEXT NULL,      -- JSON {key, rationale, confidence} — advisory only
     "PinnedDelete"  TEXT NULL,       -- JSON {heading, contentHash} captured at ask time
     "SubjectHash"   TEXT NULL,       -- baseline hash of the relevant description section
     "State"         TEXT NOT NULL,   -- open | answered | applied | dismissed | failed
@@ -216,6 +263,7 @@ CREATE TABLE IF NOT EXISTS "Questions" (
     "AppliedAt"     TEXT NULL,
     "AppliedOps"    TEXT NULL,       -- JSON record of what actually ran
     "History"       TEXT NULL,       -- JSON array of superseded answers (re-ask trail)
+    "Note"          TEXT NULL,       -- why the last apply failed, or why it reopened
     "CreatedAt"     TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "UX_Questions_Fingerprint"
@@ -295,7 +343,8 @@ Hard constraints for the prompt to carry:
 * Never start implementation. This job preps; `fleet`/`go` execute. The boundary is the
   same one `fleet-prep` draws.
 * Never make a consequential product or architecture decision on the founder's behalf —
-  surfacing the fork *is* the job.
+  surfacing the fork *is* the job. Recommending one option while offering all of them is
+  explicitly not that (decision 17).
 * Apply `draft-merge` alongside `fleet-safe` for billing / auth / tenant-isolation /
   GDPR tickets (see the risk note above).
 * Every Linear write leaves a comment citing the answer and its date.
@@ -303,9 +352,14 @@ Hard constraints for the prompt to carry:
 ## Frontend
 
 One new card type in the existing Angular app (`frontend/src/app/`), following the
-`session-card` pattern: title, markdown body, option buttons, optional free-text field,
-dismiss. Plus a quiet heartbeat line — `last checked 3h ago` — that turns visibly stale
-past a threshold.
+`session-card` pattern: title, markdown body, the recommendation block, option buttons,
+optional free-text field, dismiss. Plus a quiet heartbeat line — `last checked 3h ago` —
+that turns visibly stale past a threshold.
+
+Disagreeing with a recommendation needs no new mechanism: pick a different option and, if
+the reasoning is worth keeping, say why in the free-text note. It lands in `AnswerText` on
+the same row as the recommendation it overruled, which is the record you want when
+deciding whether a guardrail needs moving.
 
 ## Deliberately out of scope
 

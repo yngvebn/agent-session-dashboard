@@ -7,6 +7,18 @@ export interface QuestionOption {
   description?: string;
 }
 
+/**
+ * The producer's own pick, shown so you're calibrating a proposal rather than
+ * starting cold. Advisory: the applier acts on the answer, never on this.
+ * `key` may name an option that is no longer on the card — the rationale still
+ * reads, the marker just doesn't appear.
+ */
+export interface QuestionRecommendation {
+  key: string;
+  rationale?: string;
+  confidence?: 'low' | 'medium' | 'high';
+}
+
 export type QuestionState = 'open' | 'answered' | 'applied' | 'dismissed' | 'failed';
 
 export interface InboxQuestion {
@@ -18,6 +30,7 @@ export interface InboxQuestion {
   title: string;
   body: string;
   options: QuestionOption[] | null;
+  recommendation: QuestionRecommendation | null;
   pinnedDelete: { heading?: string; contentHash?: string } | null;
   subjectHash: string | null;
   state: QuestionState;

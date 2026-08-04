@@ -29,11 +29,37 @@
     </p>
   }
 
+  <!--
+    Visible rather than tucked behind the `?` disclosure: the option descriptions
+    say what happens, this says why the agent would pick one, and that reasoning
+    is the thing you need before choosing — either to lean on it or to notice a
+    guardrail arguing the wrong way.
+  -->
+  @if (recommendation(); as rec) {
+    <div class="question-recommendation">
+      <p class="recommendation-head">
+        <span class="recommendation-tag">recommends</span>
+        <span class="recommendation-pick">{{ recommendedLabel() }}</span>
+        @if (rec.confidence) {
+          <span class="recommendation-confidence">{{ rec.confidence }} confidence</span>
+        }
+      </p>
+      @if (rec.rationale) {
+        <p class="recommendation-rationale">{{ rec.rationale }}</p>
+      }
+    </div>
+  }
+
   <div class="question-options">
     @for (option of options(); track option.key) {
       <div class="question-option">
         <button class="option-btn" (click)="choose(option.key)">
           <span class="option-label">{{ option.label }}</span>
+          <!-- Marked, deliberately not styled as the primary action: a button that
+               invites a click without a read trains rubber-stamping. -->
+          @if (isRecommended(option.key)) {
+            <span class="option-flag" title="What the agent recommends">★</span>
+          }
         </button>
         @if (option.description) {
           <button

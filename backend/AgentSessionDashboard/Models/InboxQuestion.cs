@@ -46,6 +46,18 @@ public class InboxQuestion
     public string Options { get; set; } = "[]";
 
     /// <summary>
+    /// JSON <c>{ key, rationale, confidence }</c> — which option the producer
+    /// would pick and why, so the human is calibrating a proposal rather than
+    /// starting cold, and can see which guardrail produced a pick they disagree
+    /// with.
+    ///
+    /// Advisory only. The applier derives operations from <see cref="AnswerKey"/>
+    /// alone and never reads this; if it ever fell back to the recommendation,
+    /// one-hop apply would become no-hop apply.
+    /// </summary>
+    public string? Recommendation { get; set; }
+
+    /// <summary>
     /// JSON <c>{ heading, contentHash }</c> — the one description section an
     /// answer is permitted to delete, pinned when the question was written.
     /// The applier bails if the hash has moved.
