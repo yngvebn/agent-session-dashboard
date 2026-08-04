@@ -130,9 +130,16 @@ For each returned question:
 
 ## Phase B — top up the question pool
 
+Fetch **everything**, not just the open pool — you cannot pick a focus issue from a list of
+three open questions, and the subjects worth returning to are exactly the ones that are
+already settled:
+
 ```bash
-curl -s http://localhost:5900/api/questions?state=open
+curl -s http://localhost:5900/api/questions
 ```
+
+Group it by `subjectId`. That grouping is your working set: which issues have already had
+attention, what was decided, and what is still outstanding.
 
 Ask up to `3 - openCount` questions. **At most one** may be a wildcard. Prefer mechanical
 detections; only spend the wildcard if nothing mechanical is left or the wildcard finding
@@ -146,21 +153,37 @@ attention*, not *is this the best of what I found today*. If the honest answer f
 is nothing, write nothing and say `created=0` in your summary. Manufacturing a question to
 fill a slot is the one way this job makes the backlog worse instead of better.
 
-### Order: finish an issue before starting another
+### Pick a focus issue and finish it
 
 Fleet-readiness is binary. A ticket two-thirds decided is exactly as unclaimable as one
-nobody has touched, so spreading one question across three issues leaves you with three
-issues delivering nothing. Work in this order:
+nobody has touched, so one question each across three issues buys nothing at all, while
+three questions on one issue buys a claimable ticket. Worse, walking the backlog one
+question per issue means getting through the *whole* backlog once per decision an issue
+needs — about sixty questions before the first ticket is ready, instead of three.
 
-1. **Subjects you applied an answer to in phase A this run.** Re-assess each against its
-   current state. If it is still not fleet-ready, its next blocker is your next question.
-2. **Subjects with a settled question that are still not fleet-ready** — the same idea one
-   run later, for answers applied by an earlier run.
-3. Only once those are exhausted, take the wave's findings in order.
+So this is not a tie-breaker among findings. **Choose one subject per run and work it.**
 
-Spending all three slots on one issue is the intended outcome, not a bug: one claimable
-ticket is worth more than three half-decided ones. This does not override the rule above
-about asking nothing — if an issue you just touched is now genuinely clear, move on.
+1. **Pick the focus subject.** From your grouping, the best candidate is an issue that
+   already has settled questions — you have spent answers on it — and that your
+   `fleet-prep` assessment says is *still* not fleet-ready. Prefer the one closest to
+   ready. A subject you applied an answer to in phase A this run is the strongest
+   candidate of all, because you know its state is fresh.
+2. **Ask every remaining blocker on it**, up to the free slots. Not one. If it has three
+   undecided forks and three slots are free, ask three — **there is no per-issue limit,
+   and filling the whole pool from one ticket is a correct run, not a greedy one.**
+3. **Only when no touched-but-unready subject remains** do you start a new issue from the
+   wave — and then the same rule applies to it.
+
+Two things this does not override. Asking nothing is still better than padding: if the
+focus issue is genuinely clear now, move to the next one, and if nothing is worth asking,
+say `created=0`. And a re-raised finding must still be a *real* finding — the store will
+raise a previously-answered question again once its cooling-off passes, so if you see one
+come back, check it is still actually blocking before re-asking it.
+
+When an option's whole point is *not* to fix something — "leave it as is", "drop it" — make
+it also take the ticket out of the wave (cancel it, or park it behind a `blocked-by`).
+An answer that decides against acting but leaves the ticket detectable will resurface
+later, correctly but pointlessly.
 
 ### Mechanical detections (prefer these)
 

@@ -145,8 +145,9 @@ deliberately rather than re-litigated by accident.
 | 16 | **Stale pre-flight discards the answer and re-asks with new context** | Correctness over forward progress. A half-applied answer is harder to reason about later than a re-answered one. |
 | 17 | **Every question carries a recommendation — advisory, never an input to apply** | Added 2026-08-04. A bare fork makes the human start cold on a decision the producer just finished analysing. The recommendation and its rationale turn a 30-second answer into a 30-second *review*, and a recommendation you disagree with names the guardrail to go fix. See below for why it is safe. |
 | 18 | **Identity is per-finding, not per-detection-type** | Added 2026-08-04. `detectionKey` joins the fingerprint, so one issue can carry two `options-menu` questions. Without it the second was either `suppressed` or hijacked the first row — which made *finishing* an issue impossible. |
-| 19 | **Depth-first: finish an issue before starting another** | Added 2026-08-04. Fleet-readiness is binary, so breadth-first questioning maximises the number of issues delivering nothing. Three slots on one ticket is the intended outcome. |
+| 19 | **One focus issue per run, worked to completion** | Added 2026-08-04, corrected the same day — the first attempt was an ordering preference and could not execute (see below). Phase B picks one subject and asks every remaining blocker on it, up to the cap. No per-issue limit. |
 | 20 | **Dismissal is a cooling-off, not a mute** | Added 2026-08-04. Dismissing closed the card and resolved nothing, yet silenced the finding permanently — the question got exhausted while the problem stayed. Now it comes back after 7 days if still detected. |
+| 21 | **An applied answer also cools off, at 30 days** | Added 2026-08-04. Same reasoning as 20, one step further: an answer that chose *not* to act leaves the issue as un-fleet-ready as before, and the hash rebaseline then mutes it forever. Safe because detection is the filter — a resolved finding is never re-raised, so the window never fires. |
 
 ### Risk note on decision 13
 
@@ -203,9 +204,24 @@ coincidence, it is three mechanisms agreeing to go quiet too early.
 **Why depth beats breadth.** Fleet-readiness is binary — a ticket two-thirds decided is
 exactly as unclaimable as one nobody has touched. So spreading one question across three
 issues yields three issues delivering nothing, where the same three questions spent on one
-issue yield a claimable ticket. Phase B now works subjects it has just applied answers to
-*first*, and only then walks the wave. Filling all three slots from one issue is the
-intended outcome.
+issue yield a claimable ticket. Worse, one-question-per-issue means walking the entire
+backlog once per decision an issue needs: with ~20 subjects and an issue needing three
+decisions, that is ~60 questions before the *first* ticket is claimable, against three.
+
+So phase B picks **one focus subject per run** — preferring an issue that already has
+settled questions and is still not fleet-ready — and asks every remaining blocker on it up
+to the free slots. There is no per-issue limit; filling the whole pool from one ticket is a
+correct run.
+
+**The first attempt at this did not work, which is worth recording.** It was written as an
+ordering preference: "subjects you applied an answer to *this run* first, then subjects with
+a settled question that are still not fleet-ready, then the wave." Two defects. The second
+rule had **no input** — phase B fetched `?state=open`, so the producer could see the three
+open questions and nothing else; every issue settled on an earlier run was invisible to it.
+And the first rule only ever helped the single issue just answered. So an inbox that had
+already been running breadth-first would have kept going breadth-first, and the fix looked
+correct while doing nothing. Phase B now fetches **all** questions and groups them by
+subject, because a focus issue cannot be chosen from a list that excludes settled work.
 
 **Why identity had to change first.** The fingerprint was
 `source|subjectId|detectionType`, so a second `options-menu` fork on the same issue had
@@ -225,14 +241,28 @@ and 3 of the first 20 questions were wildcards on real tickets, so the taxonomy 
 leaking. Its answers map to operations phase A already has: add the relation, add the
 label, decide which of two colliding tickets goes first.
 
-**Why dismissal expires.** Dismissing is not answering. An `applied` row settled the
-problem, so only a changed subject unsettles it — but a `dismissed` row settled the *card*
-and left the problem exactly where it was, and it was then treated as settled forever. That
-is how RET-79 was dismissed while still handing an agent a raw `CREATE TABLE`, never to be
-mentioned again: **the question got exhausted, the problem didn't.** A dismissed finding now
-returns after `DismissalCoolOff` (7 days) if it is still being detected. The window is the
-whole mechanism — long enough that "not now" is respected rather than re-asked every half
-hour, short enough that a real blocker resurfaces.
+**Why settling expires — both kinds.** Settled is not solved, and that applies to answers as
+well as dismissals. A dismissal closes the *card* and leaves the problem exactly where it
+was; that is how RET-79 was dismissed while still handing an agent a raw `CREATE TABLE`,
+never to be mentioned again. But an *answer* can do the same thing: `leave-it`, `drop`,
+"keep as is" all decide against acting, and phase A then rebaselines the hash to the
+post-write state — so nothing ever looks changed and the finding is muted for good.
+**The question got exhausted, the problem didn't.**
+
+So a still-detected finding may be raised again once its window passes:
+`DismissalCoolOff` (7 days) for a dismissal, `AppliedCoolOff` (30 days) for an answer —
+longer, because re-asking a real decision too soon is second-guessing it.
+
+This is safe rather than nagging because **detection is the filter, not the window.** A
+finding the answer actually resolved is never re-raised by the producer, so its window
+never fires; the window only bites where the problem is still there. The re-ask cites the
+earlier decision — *"you answered `leave-it` 34d ago and this is still blocking
+fleet-readiness"* — because coming back silently reads as the job having forgotten rather
+than the finding having outlived the answer.
+
+Corollary for option design: an option whose whole point is *not* to fix something should
+also take the ticket out of the wave — cancel it, or park it behind a `blocked-by`.
+Otherwise it stays detectable and returns in a month, correctly but pointlessly.
 
 One asymmetry worth keeping: a **changed subject** jumps the cap, for the reason reopens
 always have — a full pool must not be able to hide a subject that moved. An **expired
@@ -433,8 +463,9 @@ answer, reopen the question with a note describing what changed (decision 16). O
 derive the typed operations, post the archive comment before any delete, apply, post the
 audit comment, then `POST /applied` with the resulting hash.
 
-**Phase B — top up to the cap.** Subjects this run just applied answers to come first
-(decision 19), then the wave in order. Detect mechanically — options menus in a `Fix`
+**Phase B — top up to the cap.** Fetches *all* questions and groups them by subject, picks
+one focus issue still short of fleet-ready, and asks every remaining blocker on it up to the
+free slots (decision 19); only then starts a fresh subject. Detect mechanically — options menus in a `Fix`
 section, unpinned DB changes, epics with `children=[]`, client/server gating mismatches,
 anything else that fails a step-2 check (`fleet-blocked`) — then at most one wildcard
 question, which may cover repo or machine hygiene. Asking nothing is a valid outcome.
@@ -484,9 +515,9 @@ prompt. A prompt can misbehave; a unique index cannot.
   A reopen for a **changed subject** is allowed through at the cap on purpose: otherwise a
   full pool could permanently hide a subject that changed. A reopen for an **expired
   dismissal** is not — it waits for a free slot.
-* **Dismissal expires** — `QuestionService.DismissalCoolOff` (7 days), measured from
-  `DismissedAt`. Dismissing closes the card; it is not an answer, so it cannot mute a
-  finding forever.
+* **Settling expires** — `DismissalCoolOff` (7 days) and `AppliedCoolOff` (30 days),
+  measured from `DismissedAt` / `AppliedAt`. Neither closing the card nor answering
+  "leave it" resolves a finding, so neither can mute one forever.
 * **A pending answer is never clobbered** — an ask against an `answered` row returns
   `pending-answer` and writes nothing.
 * **Write/Edit unavailable — but this is a reduction, not a guarantee.** The wrapper passes

@@ -29,6 +29,20 @@ public class QuestionService(SessionDbContext db, SseService sse)
     /// </summary>
     public static readonly TimeSpan DismissalCoolOff = TimeSpan.FromDays(7);
 
+    /// <summary>
+    /// How long an applied answer holds a finding closed before it may be raised again.
+    ///
+    /// Longer than <see cref="DismissalCoolOff"/> because an answer is a real decision and
+    /// re-asking it too soon is second-guessing. But not forever: an answer that chose not
+    /// to act leaves the issue exactly as un-fleet-ready as it was, and phase A rebaselines
+    /// the hash to the post-write state, so without a window nothing ever looks changed
+    /// and the finding is muted permanently.
+    ///
+    /// If a decision keeps resurfacing, the answer that settles it should also take the
+    /// ticket out of the wave — cancel or park it — rather than leaving it detectable.
+    /// </summary>
+    public static readonly TimeSpan AppliedCoolOff = TimeSpan.FromDays(30);
+
     public async Task<List<InboxQuestion>> GetAsync(string? state)
     {
         var query = db.Questions.AsQueryable();
@@ -134,29 +148,43 @@ public class QuestionService(SessionDbContext db, SseService sse)
         }
 
         // Settled. Two different reasons to raise it again, and they are not equivalent.
+        var priorState = existing.State;
+        var priorAnswer = existing.AnswerKey;
+
         var changed = !string.IsNullOrEmpty(req.SubjectHash)
                       && !string.Equals(req.SubjectHash, existing.SubjectHash, StringComparison.Ordinal);
 
-        // An `applied` row settled the problem; only a changed subject unsettles it.
-        // A `dismissed` row settled nothing — it closed the card — so the finding
-        // still being detected after the cooling-off window is reason enough.
-        var dismissalExpired = existing.State == QuestionStates.Dismissed
-                               && DateTime.UtcNow - (existing.DismissedAt ?? existing.AnsweredAt ?? existing.CreatedAt)
-                                  > DismissalCoolOff;
+        // Settled is not the same as solved. A dismissal closed the card and resolved
+        // nothing; an answer that chose *not* to act ("leave it", "drop") left the finding
+        // exactly where it was, and then muted it for good because phase A rebaselines the
+        // hash to the post-write state — so nothing ever looks changed again.
+        //
+        // Safe rather than nagging, because detection is the real filter: if the answer
+        // did resolve the finding, the producer never raises it again and the window never
+        // fires. It only bites when the problem is genuinely still there.
+        var settledAt = existing.DismissedAt ?? existing.AppliedAt ?? existing.AnsweredAt ?? existing.CreatedAt;
+        var coolOff = priorState switch
+        {
+            QuestionStates.Dismissed => DismissalCoolOff,
+            QuestionStates.Applied => AppliedCoolOff,
+            _ => (TimeSpan?)null
+        };
+        var coolOffExpired = coolOff is { } window && DateTime.UtcNow - settledAt > window;
 
-        if (!changed && !dismissalExpired)
+        if (!changed && !coolOffExpired)
             return new UpsertResult(existing, "suppressed");
 
         // A changed subject jumps the cap, for the reason reopens always have: a full
-        // pool must not be able to hide a subject that moved. An expired dismissal has
-        // no such claim — you already said "not now" — so it waits for a free slot
-        // rather than making the inbox four deep.
+        // pool must not be able to hide a subject that moved. An expired cooling-off has
+        // no such claim — you already gave this one an answer — so it waits for a free
+        // slot rather than making the inbox four deep.
         if (!changed && await CountOpenAsync() >= OpenQuestionCap)
             return new UpsertResult(existing, "at-cap");
 
+        var daysSettled = (int)Math.Round((DateTime.UtcNow - settledAt).TotalDays);
         var reason = changed
             ? "subject changed since this was settled"
-            : "dismissal expired and the finding is still present";
+            : $"{priorState} cooling-off expired and the finding is still present";
 
         PushHistory(existing, reason);
         ApplyContent(existing, req);
@@ -167,9 +195,13 @@ public class QuestionService(SessionDbContext db, SseService sse)
         existing.AppliedAt = null;
         existing.AppliedOps = null;
         existing.DismissedAt = null;
+        // Cite the earlier decision: coming back without it reads as the job having
+        // forgotten, rather than the finding having outlived the answer.
         existing.Note = changed
             ? "Re-asked: the subject changed after this was settled."
-            : "Re-asked: you dismissed this a while ago and it is still outstanding.";
+            : priorState == QuestionStates.Dismissed
+                ? $"Re-asked: you dismissed this {daysSettled}d ago and it is still outstanding."
+                : $"Re-asked: you answered '{priorAnswer}' {daysSettled}d ago and this is still blocking fleet-readiness.";
         await db.SaveChangesAsync();
         sse.BroadcastQuestionUpdate(existing);
         return new UpsertResult(existing, "reopened");
