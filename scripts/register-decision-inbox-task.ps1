@@ -4,14 +4,20 @@
 
 .DESCRIPTION
     Creates a Windows scheduled task that runs run-decision-inbox.ps1 on logon and
-    then hourly, as the current interactive user.
+    then hourly, as the current user.
 
     Running as the user is not optional: `linctl` reads credentials from
     ~/.linctl-auth.json, which is per-profile. Registered as SYSTEM the job would
     authenticate as nobody and fail on every run.
 
-    "Run only when user is logged on" is deliberate — it encodes "local thing, only
-    while my computer is on" rather than needing a stored password.
+    By default the task uses the S4U logon type, which runs as the user without an
+    interactive session — so no console window appears. Pass -ShowWindow to run it
+    inside your session instead, which pops a terminal to the foreground on every
+    fire (occasionally handy for watching a run, annoying the rest of the time).
+
+.PARAMETER ShowWindow
+    Use the Interactive logon type so a console window is visible while the job runs.
+    Off by default.
 
 .EXAMPLE
     pwsh scripts/register-decision-inbox-task.ps1
@@ -26,6 +32,7 @@ param(
     [int]$IntervalMinutes    = 60,
     [string]$ConfigDir       = $env:CLAUDE_CONFIG_DIR,
     [switch]$AllowDefaultConfig,
+    [switch]$ShowWindow,
     [switch]$Unregister
 )
 
@@ -156,10 +163,23 @@ $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 
-# Interactive-only: no stored password, and the task simply does not run when the
-# machine is off or nobody is logged in. That is the intended behaviour.
+# Logon type decides whether a console window appears, and it is the ONLY thing that
+# reliably does. `-WindowStyle Hidden` still flashes a window, and the task's `Hidden`
+# setting only hides the task from the Task Scheduler list — neither helps.
+#
+#   S4U         runs as the user in a non-interactive session: no window, ever. No
+#               stored password. The user profile is still loaded, so ~/.linctl-auth.json
+#               and CLAUDE_CONFIG_DIR resolve normally (verified).
+#   Interactive runs inside the logged-on session, so a console window pops to the
+#               foreground on every fire. Only useful for watching it work.
+#
+# Tradeoff of S4U: it also fires while the machine is on but nobody is logged in, when
+# Docker Desktop is not running. The wrapper handles that quietly — it cannot reach the
+# dashboard, so it cannot record a heartbeat either, and writes nothing at all rather
+# than a run of noisy 'failed' rows. The heartbeat simply ages until you log back in.
+$logonType = if ($ShowWindow) { 'Interactive' } else { 'S4U' }
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
-    -LogonType Interactive -RunLevel Limited
+    -LogonType $logonType -RunLevel Limited
 
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
@@ -174,7 +194,7 @@ Register-ScheduledTask -TaskName $TaskName `
     -Description 'Decision inbox for retrospective.fun — asks the founder about stalled backlog decisions and applies the answers. See agent-session-dashboard/docs/DECISION-INBOX.md' | Out-Null
 
 Write-Host "Registered '$TaskName': every $IntervalMinutes min, plus 3 min after logon." -ForegroundColor Green
-Write-Host "  Runs as : $env:USERDOMAIN\$env:USERNAME (interactive only)"
+Write-Host "  Runs as : $env:USERDOMAIN\$env:USERNAME ($logonType$(if (-not $ShowWindow) { ' — no console window' } else { ' — console window will appear' }))"
 Write-Host "  Repo    : $RepoPath"
 Write-Host "  Runner  : $runner"
 Write-Host "  Config  : $(if ($ConfigDir) { $ConfigDir } else { '<Claude default>' })"

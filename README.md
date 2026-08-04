@@ -154,6 +154,15 @@ pwsh scripts/run-decision-inbox.ps1 -DryRun             # pre-flight only, no LL
 pwsh scripts/register-decision-inbox-task.ps1 -Unregister
 ```
 
+By default no console window appears — the task uses the `S4U` logon type, which runs as
+you in the non-interactive session. Pass `-ShowWindow` if you'd rather watch it work; that
+uses `Interactive`, which pops a terminal to the foreground on every fire. Note that
+`-WindowStyle Hidden` and the task's `Hidden` setting do **not** suppress the window; only
+the logon type does.
+
+Don't register a second task against the same runner — there's no lock on applying an
+answer, so two concurrent runs can double-write to the tracker.
+
 If the job stops working, the heartbeat line next to **Decisions** turns amber — an empty
 inbox should never be mistaken for "nothing to decide".
 

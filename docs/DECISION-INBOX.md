@@ -350,6 +350,23 @@ including the two cases most likely to break in a redesign:
 * An ask carrying a **different** hash is `reopened`, the stale answer is cleared, and the
   prior answer is preserved in `History`.
 
+## Known limitations
+
+**No lock on the `answered → applied` transition.** Two concurrent runs could both read
+the same answered question and both write to Linear, producing duplicate comments and
+description appends. In practice one task with `MultipleInstances IgnoreNew` prevents this,
+and that is the whole mitigation — so do not register a second task pointing at the same
+runner. (Learned the hard way: registering an `S4UTEST` task alongside the live one on
+2026-08-04 produced exactly that race. `IgnoreNew` is scoped to a single task name and did
+not help. No duplicate writes resulted, but nothing in the store guaranteed that.)
+
+**The window is a logon-type property, not a flag.** `-WindowStyle Hidden` still flashes a
+console, and the task's `Hidden` setting only hides the task from the Task Scheduler list.
+Only the logon type decides it: `Interactive` runs in the user's desktop session (verified:
+`SessionId 1`) so a terminal pops to the foreground on every fire; `S4U` runs as the user
+in the non-interactive session (`SessionId 0`) where no window can appear. S4U is the
+default; `-ShowWindow` opts back in.
+
 ## Failure mode to watch
 
 If this grows past *one cron, one table, one card list*, it is failing on the same
