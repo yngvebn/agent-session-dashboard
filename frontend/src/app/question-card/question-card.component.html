@@ -8,9 +8,20 @@
           <span class="subject-badge">{{ question().subjectId }}</span>
         }
       }
+      <!--
+        The key is shown, not decoration: one issue can now hold several questions of
+        the same type, and without it two cards on the same ticket read identically.
+      -->
       <span class="detection-badge">{{ question().detectionType }}</span>
+      @if (question().detectionKey) {
+        <span class="detection-key" title="Which finding on this subject">{{ question().detectionKey }}</span>
+      }
     </div>
-    <button class="question-dismiss" (click)="dismiss()" title="Dismiss — writes nothing">✕</button>
+    <button
+      class="question-dismiss"
+      (click)="dismiss()"
+      title="Dismiss — writes nothing. Comes back in a week if the finding is still there."
+    >✕</button>
   </header>
 
   <h3 class="question-title">{{ question().title }}</h3>

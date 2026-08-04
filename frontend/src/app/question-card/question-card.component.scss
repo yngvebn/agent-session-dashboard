@@ -47,6 +47,17 @@
   font-family: ui-monospace, monospace;
 }
 
+.detection-key {
+  font-size: 0.68rem;
+  font-family: ui-monospace, monospace;
+  color: var(--text-muted);
+  opacity: 0.75;
+
+  &::before {
+    content: '· ';
+  }
+}
+
 .question-dismiss {
   background: none;
   border: none;

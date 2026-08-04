@@ -19,6 +19,16 @@ public class QuestionService(SessionDbContext db, SseService sse)
     /// </summary>
     public const int OpenQuestionCap = 3;
 
+    /// <summary>
+    /// How long a dismissal silences a finding before it may be raised again.
+    ///
+    /// Dismissing is not answering: it closes the card and resolves nothing, so a
+    /// permanent mute means the question gets exhausted while the problem stays put.
+    /// The window is the whole mechanism — short enough that a real blocker resurfaces,
+    /// long enough that "not now" is respected rather than re-asked every half hour.
+    /// </summary>
+    public static readonly TimeSpan DismissalCoolOff = TimeSpan.FromDays(7);
+
     public async Task<List<InboxQuestion>> GetAsync(string? state)
     {
         var query = db.Questions.AsQueryable();
@@ -52,8 +62,33 @@ public class QuestionService(SessionDbContext db, SseService sse)
     /// </summary>
     public async Task<UpsertResult> UpsertAsync(UpsertQuestionRequest req)
     {
-        var fingerprint = BuildFingerprint(req.Source, req.SubjectId, req.DetectionType);
+        var fingerprint = BuildFingerprint(req.Source, req.SubjectId, req.DetectionType, req.DetectionKey);
         var existing = await db.Questions.FirstOrDefaultAsync(q => q.Fingerprint == fingerprint);
+
+        // Transitional, and self-limiting: questions written before detectionKey existed
+        // carry the three-part fingerprint, so the first keyed ask about one of them would
+        // otherwise miss and insert a duplicate. Every already-settled question would
+        // resurface once — losing its history, and skipping the dismissal cool-off, which
+        // is precisely the guarantee the cool-off was added to provide. Adopt the keyless
+        // row instead. Safe against the unique index: the keyed fingerprint has just been
+        // shown not to exist.
+        if (existing is null && !string.IsNullOrWhiteSpace(req.DetectionKey))
+        {
+            var legacyFingerprint = BuildFingerprint(req.Source, req.SubjectId, req.DetectionType);
+            var legacy = await db.Questions.FirstOrDefaultAsync(
+                q => q.Fingerprint == legacyFingerprint && q.DetectionKey == null);
+            if (legacy is not null)
+            {
+                legacy.Fingerprint = fingerprint;
+                legacy.DetectionKey = req.DetectionKey;
+                // Saved here, not left to the branches below: the identity upgrade has to
+                // stick whatever disposition follows, and `suppressed` returns without
+                // saving. Otherwise the row keeps its keyless fingerprint, gets adopted
+                // again by the *next* finding, and no second question can ever be created.
+                await db.SaveChangesAsync();
+                existing = legacy;
+            }
+        }
 
         if (existing is null)
         {
@@ -69,6 +104,7 @@ public class QuestionService(SessionDbContext db, SseService sse)
                 Source = req.Source,
                 SubjectId = req.SubjectId,
                 DetectionType = req.DetectionType,
+                DetectionKey = req.DetectionKey,
                 Title = req.Title,
                 Body = req.Body,
                 Options = Serialize(req.Options),
@@ -97,13 +133,32 @@ public class QuestionService(SessionDbContext db, SseService sse)
             return new UpsertResult(existing, "updated");
         }
 
-        // Settled (applied / dismissed): only a materially changed subject reopens it.
+        // Settled. Two different reasons to raise it again, and they are not equivalent.
         var changed = !string.IsNullOrEmpty(req.SubjectHash)
                       && !string.Equals(req.SubjectHash, existing.SubjectHash, StringComparison.Ordinal);
-        if (!changed)
+
+        // An `applied` row settled the problem; only a changed subject unsettles it.
+        // A `dismissed` row settled nothing — it closed the card — so the finding
+        // still being detected after the cooling-off window is reason enough.
+        var dismissalExpired = existing.State == QuestionStates.Dismissed
+                               && DateTime.UtcNow - (existing.DismissedAt ?? existing.AnsweredAt ?? existing.CreatedAt)
+                                  > DismissalCoolOff;
+
+        if (!changed && !dismissalExpired)
             return new UpsertResult(existing, "suppressed");
 
-        PushHistory(existing, "subject changed since this was settled");
+        // A changed subject jumps the cap, for the reason reopens always have: a full
+        // pool must not be able to hide a subject that moved. An expired dismissal has
+        // no such claim — you already said "not now" — so it waits for a free slot
+        // rather than making the inbox four deep.
+        if (!changed && await CountOpenAsync() >= OpenQuestionCap)
+            return new UpsertResult(existing, "at-cap");
+
+        var reason = changed
+            ? "subject changed since this was settled"
+            : "dismissal expired and the finding is still present";
+
+        PushHistory(existing, reason);
         ApplyContent(existing, req);
         existing.State = QuestionStates.Open;
         existing.AnswerKey = null;
@@ -111,7 +166,10 @@ public class QuestionService(SessionDbContext db, SseService sse)
         existing.AnsweredAt = null;
         existing.AppliedAt = null;
         existing.AppliedOps = null;
-        existing.Note = "Re-asked: the subject changed after this was settled.";
+        existing.DismissedAt = null;
+        existing.Note = changed
+            ? "Re-asked: the subject changed after this was settled."
+            : "Re-asked: you dismissed this a while ago and it is still outstanding.";
         await db.SaveChangesAsync();
         sse.BroadcastQuestionUpdate(existing);
         return new UpsertResult(existing, "reopened");
@@ -138,6 +196,7 @@ public class QuestionService(SessionDbContext db, SseService sse)
         if (q is null) return null;
 
         q.State = QuestionStates.Dismissed;
+        q.DismissedAt = DateTime.UtcNow;
         q.AnsweredAt ??= DateTime.UtcNow;
         await db.SaveChangesAsync();
         sse.BroadcastQuestionUpdate(q);
@@ -198,8 +257,17 @@ public class QuestionService(SessionDbContext db, SseService sse)
         return q;
     }
 
-    public static string BuildFingerprint(string source, string? subjectId, string detectionType) =>
-        $"{source}|{subjectId ?? "-"}|{detectionType}";
+    /// <summary>
+    /// Identity of a finding. The key is appended only when supplied, so questions
+    /// written before it existed keep matching their own three-part fingerprint —
+    /// no migration, and nothing already settled resurfaces as a duplicate.
+    /// </summary>
+    public static string BuildFingerprint(
+        string source, string? subjectId, string detectionType, string? detectionKey = null)
+    {
+        var head = $"{source}|{subjectId ?? "-"}|{detectionType}";
+        return string.IsNullOrWhiteSpace(detectionKey) ? head : $"{head}|{detectionKey.Trim()}";
+    }
 
     private static void ApplyContent(InboxQuestion q, UpsertQuestionRequest req)
     {
@@ -212,6 +280,9 @@ public class QuestionService(SessionDbContext db, SseService sse)
         q.Source = req.Source;
         q.SubjectId = req.SubjectId;
         q.DetectionType = req.DetectionType;
+        // Rewritten for completeness only — this row was found *by* fingerprint, so
+        // these already match by construction. A different key is a different row.
+        q.DetectionKey = req.DetectionKey;
     }
 
     private static void PushHistory(InboxQuestion q, string reason)
@@ -267,6 +338,7 @@ public record UpsertQuestionRequest(
     string Source,
     string? SubjectId,
     string DetectionType,
+    string? DetectionKey,
     string Title,
     string Body,
     JsonNode? Options,

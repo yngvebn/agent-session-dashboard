@@ -17,10 +17,14 @@ public class InboxQuestion
     public int Id { get; set; }
 
     /// <summary>
-    /// Identity of the question: <c>source|subjectId|detectionType</c>. Unique.
-    /// A second ask with the same fingerprint updates or reopens this row rather
-    /// than inserting a duplicate — that is what makes the duplicate-flood
-    /// failure mode structurally impossible rather than merely unlikely.
+    /// Identity of the question:
+    /// <c>source|subjectId|detectionType[|detectionKey]</c>. Unique. A second ask
+    /// with the same fingerprint updates or reopens this row rather than inserting
+    /// a duplicate — that is what makes the duplicate-flood failure mode
+    /// structurally impossible rather than merely unlikely.
+    ///
+    /// The key is appended only when present, so a producer that omits it keeps
+    /// the original three-part identity and needs no migration.
     /// </summary>
     public string Fingerprint { get; set; } = "";
 
@@ -33,9 +37,20 @@ public class InboxQuestion
     /// <summary>
     /// What kind of detection produced this: <c>options-menu</c>,
     /// <c>unpinned-migration</c>, <c>epic-no-children</c>,
-    /// <c>gating-mismatch</c>, <c>wildcard</c>.
+    /// <c>gating-mismatch</c>, <c>fleet-blocked</c>, <c>wildcard</c>.
     /// </summary>
     public string DetectionType { get; set; } = "";
+
+    /// <summary>
+    /// Short stable slug for the *specific finding* — <c>process-managers-table</c>,
+    /// not <c>RET-79</c> and not <c>unpinned-migration</c>. Part of the fingerprint,
+    /// so it is what lets one subject carry two questions of the same detection type
+    /// instead of the second silently replacing the first.
+    ///
+    /// Must be derived from something stable in the finding: a key that drifts
+    /// between runs re-asks a question that was already answered.
+    /// </summary>
+    public string? DetectionKey { get; set; }
 
     public string Title { get; set; } = "";
 
@@ -82,6 +97,15 @@ public class InboxQuestion
 
     public DateTime? AnsweredAt { get; set; }
     public DateTime? AppliedAt { get; set; }
+
+    /// <summary>
+    /// When the question was dismissed. Tracked separately from
+    /// <see cref="AnsweredAt"/> because it means something different — an answer
+    /// resolves the underlying problem, a dismissal only closes the card — and
+    /// because the cooling-off window that lets a dismissed finding come back is
+    /// measured from here.
+    /// </summary>
+    public DateTime? DismissedAt { get; set; }
 
     /// <summary>JSON record of the operations that actually ran.</summary>
     public string? AppliedOps { get; set; }

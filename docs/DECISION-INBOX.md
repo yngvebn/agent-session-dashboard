@@ -144,6 +144,9 @@ deliberately rather than re-litigated by accident.
 | 15 | **Heartbeat row + stale indicator** | Every run records time and outcome; the card list shows a quiet "last checked Nh ago" that turns visibly stale past a threshold. Catches silent death — otherwise an empty inbox reads as "nothing to decide". |
 | 16 | **Stale pre-flight discards the answer and re-asks with new context** | Correctness over forward progress. A half-applied answer is harder to reason about later than a re-answered one. |
 | 17 | **Every question carries a recommendation — advisory, never an input to apply** | Added 2026-08-04. A bare fork makes the human start cold on a decision the producer just finished analysing. The recommendation and its rationale turn a 30-second answer into a 30-second *review*, and a recommendation you disagree with names the guardrail to go fix. See below for why it is safe. |
+| 18 | **Identity is per-finding, not per-detection-type** | Added 2026-08-04. `detectionKey` joins the fingerprint, so one issue can carry two `options-menu` questions. Without it the second was either `suppressed` or hijacked the first row — which made *finishing* an issue impossible. |
+| 19 | **Depth-first: finish an issue before starting another** | Added 2026-08-04. Fleet-readiness is binary, so breadth-first questioning maximises the number of issues delivering nothing. Three slots on one ticket is the intended outcome. |
+| 20 | **Dismissal is a cooling-off, not a mute** | Added 2026-08-04. Dismissing closed the card and resolved nothing, yet silenced the finding permanently — the question got exhausted while the problem stayed. Now it comes back after 7 days if still detected. |
 
 ### Risk note on decision 13
 
@@ -190,6 +193,51 @@ tickets touching billing, payments, auth, tenant isolation or GDPR/erasure, and
 apply `draft-merge` alongside it for those same categories. That keeps the fast path fast
 and removes the one tail outcome worth regretting — an unattended chain auto-merging
 entitlement code. `RET-376` is exactly such a ticket.
+
+### Exhausting an issue, not just touching it (decisions 18–20)
+
+The original build asked one question per issue and moved on. Measured after the first
+month: **20 questions, 20 distinct subjects, zero repeats, zero re-asks.** That is not a
+coincidence, it is three mechanisms agreeing to go quiet too early.
+
+**Why depth beats breadth.** Fleet-readiness is binary — a ticket two-thirds decided is
+exactly as unclaimable as one nobody has touched. So spreading one question across three
+issues yields three issues delivering nothing, where the same three questions spent on one
+issue yield a claimable ticket. Phase B now works subjects it has just applied answers to
+*first*, and only then walks the wave. Filling all three slots from one issue is the
+intended outcome.
+
+**Why identity had to change first.** The fingerprint was
+`source|subjectId|detectionType`, so a second `options-menu` fork on the same issue had
+nowhere to live: with an unchanged section hash it was `suppressed` (silently dropped), and
+with a changed one it `reopened` the settled row — overwriting the title and body and
+pushing an already-applied decision into `History`. Depth-first is impossible while an
+issue can only ever hold one question per type. Hence `detectionKey`, which must be derived
+from something stable in the finding: **a key that drifts between runs re-asks answered
+questions, which is the duplicate flood arriving by the one door the unique index cannot
+close.**
+
+**Why `fleet-blocked` exists.** `fleet-safe withheld: <reason>` is the most direct "still
+not fleet-ready" signal in the system, but of the five `fleet-prep` step-2 checks only
+container and undecided-path had a `detectionType`. Unresolved `blocked-by`, in-wave file
+collision and the risk gate mapped to nothing, so they fell to the single wildcard slot —
+and 3 of the first 20 questions were wildcards on real tickets, so the taxonomy was already
+leaking. Its answers map to operations phase A already has: add the relation, add the
+label, decide which of two colliding tickets goes first.
+
+**Why dismissal expires.** Dismissing is not answering. An `applied` row settled the
+problem, so only a changed subject unsettles it — but a `dismissed` row settled the *card*
+and left the problem exactly where it was, and it was then treated as settled forever. That
+is how RET-79 was dismissed while still handing an agent a raw `CREATE TABLE`, never to be
+mentioned again: **the question got exhausted, the problem didn't.** A dismissed finding now
+returns after `DismissalCoolOff` (7 days) if it is still being detected. The window is the
+whole mechanism — long enough that "not now" is respected rather than re-asked every half
+hour, short enough that a real blocker resurfaces.
+
+One asymmetry worth keeping: a **changed subject** jumps the cap, for the reason reopens
+always have — a full pool must not be able to hide a subject that moved. An **expired
+dismissal** does not; you already said "not now", so it waits for a free slot rather than
+making the inbox four deep. Decision 4 is what that protects.
 
 ### Cadence: why 30 minutes is nearly free (decision 1, amended)
 
@@ -276,11 +324,12 @@ already exists. `Recommendation` was added this way.
 ```sql
 CREATE TABLE IF NOT EXISTS "Questions" (
     "Id"            INTEGER NOT NULL CONSTRAINT "PK_Questions" PRIMARY KEY AUTOINCREMENT,
-    "Fingerprint"   TEXT NOT NULL,   -- source|subjectId|detectionType — identity
+    "Fingerprint"   TEXT NOT NULL,   -- source|subjectId|detectionType[|detectionKey]
     "Source"        TEXT NOT NULL,   -- 'ret-backlog' | 'hygiene'
     "SubjectId"     TEXT NULL,       -- 'RET-381'; NULL for hygiene findings
-    "DetectionType" TEXT NOT NULL,   -- options-menu | unpinned-migration |
-                                     -- epic-no-children | gating-mismatch | wildcard
+    "DetectionType" TEXT NOT NULL,   -- options-menu | unpinned-migration | epic-no-children
+                                     -- | gating-mismatch | fleet-blocked | wildcard
+    "DetectionKey"  TEXT NULL,       -- which finding of that type — part of the identity
     "Title"         TEXT NOT NULL,
     "Body"          TEXT NOT NULL,   -- markdown context shown on the card
     "Options"       TEXT NOT NULL,   -- JSON [{key,label,description}]
@@ -292,6 +341,7 @@ CREATE TABLE IF NOT EXISTS "Questions" (
     "AnswerText"    TEXT NULL,       -- optional free text alongside the chosen option
     "AnsweredAt"    TEXT NULL,
     "AppliedAt"     TEXT NULL,
+    "DismissedAt"   TEXT NULL,       -- start of the cooling-off window (decision 20)
     "AppliedOps"    TEXT NULL,       -- JSON record of what actually ran
     "History"       TEXT NULL,       -- JSON array of superseded answers (re-ask trail)
     "Note"          TEXT NULL,       -- why the last apply failed, or why it reopened
@@ -317,6 +367,25 @@ than inserting a duplicate: the current answer is pushed onto `History`, the ans
 fields clear, and `State` returns to `open`. That is what makes the duplicate-flood
 failure mode structurally impossible rather than merely unlikely.
 
+The key is appended **only when supplied**, so `a|b|c` and `a|b|c|k` are different
+identities and rows written before `detectionKey` existed keep matching their own
+three-part fingerprint. No migration, and nothing already settled resurfaces.
+
+That leaves one transitional case, handled in `UpsertAsync` and self-limiting: the first
+*keyed* ask about a subject+type that still has a keyless row **adopts** that row —
+upgrading its fingerprint in place — rather than inserting a duplicate. Without it every
+settled question would resurface once under its new identity, losing its `History` and
+skipping the dismissal cooling-off, which is exactly the guarantee decision 20 exists to
+provide. The adoption is saved immediately, independently of the disposition that follows:
+`suppressed` returns without saving, so leaving it to the branches below would let the row
+keep its keyless fingerprint, get adopted again by the *next* finding, and never allow a
+second question at all.
+
+Its one wrinkle: if an issue really had two same-type forks before the change, the first
+keyed ask adopts the keyless row whichever fork it is about. Unavoidable — the keyless
+identity was "the `options-menu` finding on RET-22", singular — and self-correcting, since
+the other fork is re-detected next run and gets its own row.
+
 ## API surface
 
 | Method | Route | Purpose |
@@ -324,7 +393,7 @@ failure mode structurally impossible rather than merely unlikely.
 | `GET` | `/api/questions?state=open` | Card list. Also the wrapper's cheap pre-flight. |
 | `POST` | `/api/questions` | Upsert by fingerprint (producer). |
 | `POST` | `/api/questions/{id}/answer` | `{ key, text? }` — from the card UI. |
-| `POST` | `/api/questions/{id}/dismiss` | Closes without a Linear write. |
+| `POST` | `/api/questions/{id}/dismiss` | Closes without a Linear write. Stamps `DismissedAt`; the finding may be raised again once the cooling-off window passes (decision 20). |
 | `POST` | `/api/questions/{id}/applied` | `{ ops, subjectHash }` — records what ran and rebaselines the hash (decision 10). |
 | `GET` | `/api/jobs/runs?name=decision-inbox&limit=1` | Heartbeat for the stale indicator. |
 | `POST` | `/api/jobs/runs` | Job records its own run. |
@@ -364,9 +433,11 @@ answer, reopen the question with a note describing what changed (decision 16). O
 derive the typed operations, post the archive comment before any delete, apply, post the
 audit comment, then `POST /applied` with the resulting hash.
 
-**Phase B — top up to the cap.** Detect mechanically first — options menus in a `Fix`
-section, unpinned DB changes, epics with `children=[]`, client/server gating mismatches
-— then at most one wildcard question, which may cover repo or machine hygiene.
+**Phase B — top up to the cap.** Subjects this run just applied answers to come first
+(decision 19), then the wave in order. Detect mechanically — options menus in a `Fix`
+section, unpinned DB changes, epics with `children=[]`, client/server gating mismatches,
+anything else that fails a step-2 check (`fleet-blocked`) — then at most one wildcard
+question, which may cover repo or machine hygiene. Asking nothing is a valid outcome.
 
 Hard constraints for the prompt to carry:
 
@@ -405,11 +476,17 @@ deciding whether a guardrail needs moving.
 Worth knowing when changing this: the invariants are enforced in the **store**, not in the
 prompt. A prompt can misbehave; a unique index cannot.
 
-* **No duplicate questions** — unique index on `Fingerprint`, plus reopen-in-place
-  semantics in `QuestionService.UpsertAsync`.
+* **No duplicate questions** — unique index on `Fingerprint`
+  (`source|subjectId|detectionType[|detectionKey]`), plus reopen-in-place semantics in
+  `QuestionService.UpsertAsync`. The producer chooses the key, so a *stable* key is the one
+  part of this the store cannot enforce.
 * **Cap of 3** — `QuestionService.OpenQuestionCap`, returned as a `409` to the producer.
-  Reopens are allowed through at the cap on purpose: otherwise a full pool could
-  permanently hide a subject that changed.
+  A reopen for a **changed subject** is allowed through at the cap on purpose: otherwise a
+  full pool could permanently hide a subject that changed. A reopen for an **expired
+  dismissal** is not — it waits for a free slot.
+* **Dismissal expires** — `QuestionService.DismissalCoolOff` (7 days), measured from
+  `DismissedAt`. Dismissing closes the card; it is not an answer, so it cannot mute a
+  finding forever.
 * **A pending answer is never clobbered** — an ask against an `answered` row returns
   `pending-answer` and writes nothing.
 * **Write/Edit unavailable — but this is a reduction, not a guarantee.** The wrapper passes

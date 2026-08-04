@@ -146,6 +146,22 @@ attention*, not *is this the best of what I found today*. If the honest answer f
 is nothing, write nothing and say `created=0` in your summary. Manufacturing a question to
 fill a slot is the one way this job makes the backlog worse instead of better.
 
+### Order: finish an issue before starting another
+
+Fleet-readiness is binary. A ticket two-thirds decided is exactly as unclaimable as one
+nobody has touched, so spreading one question across three issues leaves you with three
+issues delivering nothing. Work in this order:
+
+1. **Subjects you applied an answer to in phase A this run.** Re-assess each against its
+   current state. If it is still not fleet-ready, its next blocker is your next question.
+2. **Subjects with a settled question that are still not fleet-ready** — the same idea one
+   run later, for answers applied by an earlier run.
+3. Only once those are exhausted, take the wave's findings in order.
+
+Spending all three slots on one issue is the intended outcome, not a bug: one claimable
+ticket is worth more than three half-decided ones. This does not override the rule above
+about asking nothing — if an issue you just touched is now genuinely clear, move on.
+
 ### Mechanical detections (prefer these)
 
 **Invoke the `fleet-prep` skill and use its step-2 assessment as your detector.** Do not
@@ -163,6 +179,7 @@ Map what it finds onto a `detectionType`:
 | `unpinned-migration` | An unpinned DB change (the raw-SQL trap). |
 | `epic-no-children` | A container masquerading as executable — `children` empty but the body is an epic. |
 | `gating-mismatch` | Client/server tier-gating disagreement; which side wins is a product call. |
+| `fleet-blocked` | Any other step-2 check that fails or that phase A withheld `fleet-safe` for: an unresolved `blocked-by`, a file collision with something already `Todo` + `fleet-safe`, or the risk gate wanting `draft-merge`. This is the most direct "still not fleet-ready" signal there is, so it gets its own type rather than competing for the wildcard slot. Its answers map to real operations — add the `blocked-by` relation, add the label, or decide which of two colliding tickets goes first. |
 
 Note that `fleet-prep` assesses the top of the queue as a *wave*. You only need one
 candidate per question, so take its findings in order and stop once the pool is full.
@@ -184,6 +201,7 @@ curl -s -X POST http://localhost:5900/api/questions \
     "source": "ret-backlog",
     "subjectId": "RET-381",
     "detectionType": "options-menu",
+    "detectionKey": "compose-e2e-paths-filter",
     "title": "CI paths-filter: should client-only changes run the compose E2E?",
     "body": "RET-381 lists three options and asks for a policy decision. Running the full compose E2E on every client/src change costs ~18 min x 3 shards; RET-357 narrowed the filter deliberately, and a gating regression then slipped through on RET-375.",
     "options": [
@@ -203,6 +221,16 @@ curl -s -X POST http://localhost:5900/api/questions \
 
 Rules for the content:
 
+- **`detectionKey`** is required, and names the *specific finding* — not the issue, not the
+  category. `compose-e2e-paths-filter`, `process-managers-table`. Identity is
+  `source|subjectId|detectionType|detectionKey`, so this is the field that lets one issue
+  carry two `options-menu` questions instead of the second silently replacing the first,
+  which is what makes finishing an issue possible at all.
+
+  **Derive it from something stable in the finding** — the heading it came from, the table
+  name, the label — so the same finding yields the same key next run. A key that drifts
+  between runs re-asks questions that were already answered, which is the duplicate flood
+  arriving by the one door the unique index cannot close.
 - **Title** is the question, short enough to read at a glance.
 - **Body** is **human-facing only** — at most three short paragraphs, ~120 words. Give
   just enough context to decide without opening Linear, including the numbers that make

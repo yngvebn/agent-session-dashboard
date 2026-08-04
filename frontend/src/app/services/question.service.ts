@@ -27,6 +27,8 @@ export interface InboxQuestion {
   source: string;
   subjectId: string | null;
   detectionType: string;
+  /** Identifies the specific finding — two questions can share subject and type. */
+  detectionKey: string | null;
   title: string;
   body: string;
   options: QuestionOption[] | null;
@@ -38,6 +40,7 @@ export interface InboxQuestion {
   answerText: string | null;
   answeredAt: string | null;
   appliedAt: string | null;
+  dismissedAt: string | null;
   note: string | null;
   createdAt: string;
 }
