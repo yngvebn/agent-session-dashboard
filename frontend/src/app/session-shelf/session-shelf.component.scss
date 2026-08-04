@@ -1,0 +1,51 @@
+.session-shelf {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+  padding-top: 0.5rem;
+
+  // Shut, the shelf is one line of chrome — no rule below it to imply content.
+  &.collapsed {
+    margin-top: 1rem;
+  }
+}
+
+.shelf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.75rem;
+  margin-bottom: 0.15rem;
+}
+
+.shelf-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: none;
+  padding: 0.1rem 0;
+  cursor: pointer;
+  color: var(--text-muted);
+
+  &:hover {
+    color: var(--text-secondary);
+  }
+}
+
+.shelf-chevron {
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.shelf-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: inherit;
+}
+
+.shelf-list {
+  display: flex;
+  flex-direction: column;
+}

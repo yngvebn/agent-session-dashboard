@@ -1,21 +1,22 @@
 import { Component, inject, computed, signal, effect } from '@angular/core';
-import { SessionSseService } from './services/session-sse.service';
+import { Session, SessionSseService } from './services/session-sse.service';
 import { VersionService } from './services/version.service';
 import { QuestionService } from './services/question.service';
 import { SessionCardComponent } from './session-card/session-card.component';
+import { SessionShelfComponent } from './session-shelf/session-shelf.component';
 import { ShortcutSidebarComponent } from './shortcut-sidebar/shortcut-sidebar.component';
 import { QuestionCardComponent } from './question-card/question-card.component';
 
+/** Ordering within the live grid. Inactive and closed never reach it. */
 const STATUS_RANK: Record<string, number> = {
   running: 0,
   idle: 1,
-  crashed: 2,
 };
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [SessionCardComponent, ShortcutSidebarComponent, QuestionCardComponent],
+  imports: [SessionCardComponent, SessionShelfComponent, ShortcutSidebarComponent, QuestionCardComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
 })
@@ -65,8 +66,17 @@ export class AppComponent {
     }).join(' ');
   });
 
+  /**
+   * The grid is for sessions that are still doing something. Inactive and closed
+   * ones live on shelves below it — a full card each is how four dead sessions
+   * push the live ones off the screen.
+   *
+   * Filtered by exclusion rather than by listing running/idle, so a status the
+   * backend grows later shows up in the grid instead of vanishing from the UI.
+   */
   readonly activeSessions = computed(() => {
-    const sessions = this.sseService.sessions().filter(s => s.status !== 'closed');
+    const sessions = this.sseService.sessions()
+      .filter(s => s.status !== 'closed' && s.status !== 'crashed');
     return sessions.sort((a, b) => {
       const rankDiff = (STATUS_RANK[a.status] ?? 99) - (STATUS_RANK[b.status] ?? 99);
       if (rankDiff !== 0) return rankDiff;
@@ -74,11 +84,16 @@ export class AppComponent {
     });
   });
 
-  readonly closedSessions = computed(() => {
+  /** `crashed` is what the card labels INACTIVE — resumable, just not running. */
+  readonly inactiveSessions = computed(() => this.byLastSeen('crashed'));
+
+  readonly closedSessions = computed(() => this.byLastSeen('closed'));
+
+  private byLastSeen(status: Session['status']): Session[] {
     return this.sseService.sessions()
-      .filter(s => s.status === 'closed')
+      .filter(s => s.status === status)
       .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
-  });
+  }
 
   dismissAllClosed(): void {
     this.sseService.deleteAllClosed();

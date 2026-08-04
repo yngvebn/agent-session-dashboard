@@ -70,7 +70,7 @@
       }
 
       <div class="sessions-grid">
-        @if (activeSessions().length === 0 && closedSessions().length === 0) {
+        @if (activeSessions().length === 0 && inactiveSessions().length === 0 && closedSessions().length === 0) {
           <div class="empty-state">
             <p>No active sessions</p>
           </div>
@@ -80,18 +80,28 @@
         }
       </div>
 
+      <!--
+        Two shelves, same shape. Inactive starts open — those sessions are still
+        resumable, so they are worth a glance. Closed starts shut: it is a purge
+        queue, and 29 rows of it crowds out the sessions you actually care about.
+      -->
+      @if (inactiveSessions().length > 0) {
+        <app-session-shelf
+          label="Inactive"
+          [sessions]="inactiveSessions()"
+          storageKey="shelf.inactive.collapsed"
+        />
+      }
+
       @if (closedSessions().length > 0) {
-        <div class="closed-sessions-bar">
-          <div class="closed-bar-header">
-            <span class="closed-bar-label">Closed ({{ closedSessions().length }})</span>
-            <button class="dismiss-all-btn" (click)="dismissAllClosed()" title="Purge all closed sessions">Close all</button>
-          </div>
-          <div class="closed-sessions-list">
-            @for (session of closedSessions(); track session.sessionId) {
-              <app-session-card [session]="session" [compact]="true" />
-            }
-          </div>
-        </div>
+        <app-session-shelf
+          label="Closed"
+          [sessions]="closedSessions()"
+          storageKey="shelf.closed.collapsed"
+          [startCollapsed]="true"
+        >
+          <button class="dismiss-all-btn" (click)="dismissAllClosed()" title="Purge all closed sessions">Close all</button>
+        </app-session-shelf>
       }
     </main>
 

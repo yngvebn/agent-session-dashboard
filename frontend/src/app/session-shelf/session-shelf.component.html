@@ -1,0 +1,22 @@
+<section class="session-shelf" [class.collapsed]="collapsed()">
+  <div class="shelf-header">
+    <!--
+      Only the label toggles, rather than the whole header row: any action a
+      caller projects alongside it (Close all) would otherwise need to stop the
+      click from bubbling into a collapse.
+    -->
+    <button class="shelf-toggle" (click)="toggle()" [attr.aria-expanded]="!collapsed()">
+      <span class="shelf-chevron">{{ collapsed() ? '▸' : '▾' }}</span>
+      <span class="shelf-label">{{ label() }} ({{ sessions().length }})</span>
+    </button>
+    <ng-content />
+  </div>
+
+  @if (!collapsed()) {
+    <div class="shelf-list">
+      @for (session of sessions(); track session.sessionId) {
+        <app-session-card [session]="session" [compact]="true" />
+      }
+    </div>
+  }
+</section>
