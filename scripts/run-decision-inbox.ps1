@@ -7,7 +7,8 @@
     new ones. Both phases happen inside a single `claude -p` invocation.
 
     The cheap pre-flight lives HERE rather than in the prompt: a no-op run must not
-    cost a session spin-up, which is what makes an hourly trigger essentially free.
+    cost a session spin-up, which is what makes a short trigger interval essentially
+    free — most fires skip on one HTTP GET.
 
     Registered with Task Scheduler by register-decision-inbox-task.ps1. Must run as
     the interactive user — `linctl` credentials live in ~/.linctl-auth.json, which

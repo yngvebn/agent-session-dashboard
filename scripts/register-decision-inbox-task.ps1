@@ -4,7 +4,11 @@
 
 .DESCRIPTION
     Creates a Windows scheduled task that runs run-decision-inbox.ps1 on logon and
-    then hourly, as the current user.
+    then every 30 minutes, as the current user.
+
+    A short interval is close to free: the runner's pre-flight skips without invoking
+    Claude whenever the pool is full and nothing is answered, which is most fires. The
+    real throttle on cost is how fast questions get answered, not how often this ticks.
 
     Running as the user is not optional: `linctl` reads credentials from
     ~/.linctl-auth.json, which is per-profile. Registered as SYSTEM the job would
@@ -29,7 +33,7 @@ param(
     [string]$TaskName        = 'Decision Inbox',
     [string]$RepoPath        = 'C:\github\retrospective.fun',
     [string]$DashboardUrl    = 'http://localhost:5900',
-    [int]$IntervalMinutes    = 60,
+    [int]$IntervalMinutes    = 30,
     [string]$ConfigDir       = $env:CLAUDE_CONFIG_DIR,
     [switch]$AllowDefaultConfig,
     [switch]$ShowWindow,
@@ -156,12 +160,29 @@ $atLogon.Delay = 'PT3M'
 $repeating = New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes(7) `
     -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
 
+# Derived from the interval rather than fixed. The limit has to sit between two other
+# numbers: above the runner's own 20-minute Wait-Job guard, which stops a run *and*
+# records a 'failed' heartbeat, and below the next trigger, so a hung run cannot bleed
+# into the following window. A hard-coded 30 satisfied neither at -IntervalMinutes 30 —
+# it put the scheduler's hard kill exactly where the next fire wanted to start, which
+# quietly demotes the backstop to a coin flip with IgnoreNew.
+$executionLimit = [Math]::Min(30, [Math]::Max(5, $IntervalMinutes - 5))
+
+if ($executionLimit -lt 20) {
+    Write-Warning @"
+Execution limit is ${executionLimit}m, below the runner's own 20m timeout. The scheduler
+will hard-kill runs before run-decision-inbox.ps1 can record a 'failed' heartbeat, so a
+slow run looks like a silently missing one. Either raise -IntervalMinutes, or lower
+-TimeoutMinutes in the runner to stay under ${executionLimit}m.
+"@
+}
+
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
     -StartWhenAvailable `
     -MultipleInstances IgnoreNew `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+    -ExecutionTimeLimit (New-TimeSpan -Minutes $executionLimit)
 
 # Logon type decides whether a console window appears, and it is the ONLY thing that
 # reliably does. `-WindowStyle Hidden` still flashes a window, and the task's `Hidden`
@@ -198,6 +219,7 @@ Write-Host "  Runs as : $env:USERDOMAIN\$env:USERNAME ($logonType$(if (-not $Sho
 Write-Host "  Repo    : $RepoPath"
 Write-Host "  Runner  : $runner"
 Write-Host "  Config  : $(if ($ConfigDir) { $ConfigDir } else { '<Claude default>' })"
+Write-Host "  Limit   : ${executionLimit} min per run (scheduler backstop)"
 Write-Host ''
 Write-Host 'Verify with:' -ForegroundColor Cyan
 Write-Host "  Start-ScheduledTask -TaskName '$TaskName'"

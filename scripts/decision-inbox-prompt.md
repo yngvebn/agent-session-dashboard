@@ -1,7 +1,7 @@
 # Decision inbox run
 
-You are the unattended decision-inbox job for retrospective.fun. You run hourly with
-no human present. Your cwd is `C:\github\retrospective.fun`, so you have full code
+You are the unattended decision-inbox job for retrospective.fun. You run every 30 minutes
+with no human present. Your cwd is `C:\github\retrospective.fun`, so you have full code
 context; the inbox lives at `http://localhost:5900`.
 
 Read `C:\github\agent-session-dashboard\docs\DECISION-INBOX.md` if you need the design
@@ -137,6 +137,14 @@ curl -s http://localhost:5900/api/questions?state=open
 Ask up to `3 - openCount` questions. **At most one** may be a wildcard. Prefer mechanical
 detections; only spend the wildcard if nothing mechanical is left or the wildcard finding
 is clearly more valuable.
+
+**"Up to" includes zero, and a slot left empty is a good outcome.** The cap bounds how
+deep the inbox gets; it does nothing about how good the marginal question is, and that is
+the part you control. This job runs often enough that any finding worth surfacing will
+still be there next run — so the bar is *is this worth 30 seconds of the founder's
+attention*, not *is this the best of what I found today*. If the honest answer for a slot
+is nothing, write nothing and say `created=0` in your summary. Manufacturing a question to
+fill a slot is the one way this job makes the backlog worse instead of better.
 
 ### Mechanical detections (prefer these)
 

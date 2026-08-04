@@ -142,8 +142,10 @@ pwsh scripts/register-decision-inbox-task.ps1
 ```
 
 That registers a task running as **you** (not `SYSTEM` — `linctl` credentials are
-per-profile), 3 minutes after logon and hourly thereafter, with the Claude session's
-working directory set to the target repo so it has code context.
+per-profile), 3 minutes after logon and every 30 minutes thereafter, with the Claude
+session's working directory set to the target repo so it has code context. Pass
+`-IntervalMinutes` to change the cadence; a short one is close to free, since the runner
+skips without invoking Claude whenever the pool is full and nothing is answered.
 
 > **Two credentials, both per-user.** `linctl` reads `~/.linctl-auth.json`, and Claude
 > reads whichever config root `CLAUDE_CONFIG_DIR` points at. That variable is

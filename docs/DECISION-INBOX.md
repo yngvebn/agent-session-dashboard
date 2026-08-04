@@ -34,7 +34,7 @@ browser tab, so the `Todo` queue stays warm without a session being open.
 One scheduled job, two phases per run, talking HTTP to the existing dashboard.
 
 ```
-Task Scheduler (hourly, as user)
+Task Scheduler (every 30 min, as user)
    └── run-decision-inbox.ps1
          ├── cheap pre-flight: GET /api/questions  → skip if nothing to do
          └── claude -p  (cwd = C:\github\retrospective.fun)
@@ -62,7 +62,7 @@ Both built-in options were considered and each fails on a specific constraint:
 | `CronCreate` | Session-only, in-memory. Dies when the Claude session exits; recurring jobs auto-expire after 7 days; fires only while the REPL is idle. An inbox that silently stopped filling is worse than none. |
 | `/schedule` cloud routines | Genuinely persistent, but runs in a cloud container — no `localhost:5900`, no `~/.linctl-auth.json`. Cannot reach either half of this system. |
 
-Task Scheduler wins by elimination: trigger on logon **plus** repeat every hour, "run
+Task Scheduler wins by elimination: trigger on logon **plus** a repeating interval, "run
 only when user is logged on", running **as the user account**. That last part matters —
 see auth below.
 
@@ -127,7 +127,7 @@ deliberately rather than re-litigated by accident.
 
 | # | Decision | Rationale |
 | --- | --- | --- |
-| 1 | **Task Scheduler + `claude -p`**, as user, hourly | Only option that is both local and unattended (see table above). |
+| 1 | **Task Scheduler + `claude -p`**, as user, every 30 min | Only option that is both local and unattended (see table above). Amended 2026-08-04 from hourly — see the cadence note below. |
 | 2 | **One job, two phases** — not two jobs | One prompt, one schedule, one thing that can silently stop firing. Two writers on the same rows buys nothing. |
 | 3 | **Producer: narrow + one wildcard slot** | Up to two mechanically-detected questions plus at most one open-ended judgement call per run. Bounds noise while leaving room to surface something unasked. |
 | 4 | **Cap 3 open questions**, refill only as answered | Above this the inbox becomes a second backlog you also ignore. The founder-energy gate applies to the tool itself. |
@@ -190,6 +190,37 @@ tickets touching billing, payments, auth, tenant isolation or GDPR/erasure, and
 apply `draft-merge` alongside it for those same categories. That keeps the fast path fast
 and removes the one tail outcome worth regretting — an unattended chain auto-merging
 entitlement code. `RET-376` is exactly such a ticket.
+
+### Cadence: why 30 minutes is nearly free (decision 1, amended)
+
+Measured over the first 27 runs on the hourly schedule: **17 skipped** (pool full, nothing
+answered — one HTTP GET, no session), 8 `ok`, 2 `failed`. Invoked runs took 8–13 minutes
+and the 8 `ok` ones produced 17 questions.
+
+So the trigger interval is not what governs cost. The cap means every question created has
+to be answered before another can take its place, which makes **your answering rate the
+actual throttle** — a shorter interval discovers the same work sooner rather than creating
+more of it. Halving the interval mostly doubles the number of free fires.
+
+Two things do get worse, neither fatal:
+
+* **Cost per question rises**, because the `fleet-prep` sweep is a fixed cost paid whether
+  a run fills one slot or three. At hourly that was 2.1 questions per invoked run; a
+  shorter interval catches a single freed slot more often. Roughly 1.5×, not 2×.
+* **The marginal question gets weaker.** The cap bounds queue *depth*, not question
+  *quality* — refill rate decides that. A faster cadence gives a slot less time to wait
+  for a good mechanical finding before something thinner takes it, and doubles the daily
+  wildcard budget. Mitigated in the prompt, which now says explicitly that asking nothing
+  is a good outcome and that anything worth surfacing will still be there next run. That
+  line is doing real work at this cadence; do not drop it.
+
+One coupling to respect when changing the interval: the task's `ExecutionTimeLimit` is
+**derived** from it (`min(30, interval - 5)`) rather than fixed. It has to land above the
+runner's own 20-minute `Wait-Job` guard — which stops a run *and* records a `failed`
+heartbeat — and below the next trigger, so a hung run cannot bleed into the following
+window. The previously hard-coded 30 satisfied neither at a 30-minute interval: it put the
+scheduler's hard kill exactly where the next fire began, demoting the backstop to a
+coin flip with `IgnoreNew`. Registration warns if the derived limit drops under 20.
 
 ### Recommendations are advisory (decision 17)
 
@@ -304,7 +335,7 @@ streams, so pushing question events to the startpage is nearly free.
 ## Wrapper script
 
 `scripts/run-decision-inbox.ps1` in this repo. The cheap check lives **in the wrapper,
-not in the prompt** — this is what makes an hourly trigger essentially free, since a
+not in the prompt** — this is what makes a short trigger interval essentially free, since a
 no-op run must not spend a token spinning up a session.
 
 ```
