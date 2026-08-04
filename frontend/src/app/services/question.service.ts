@@ -56,9 +56,15 @@ export interface JobRun {
   applied: number;
 }
 
-/** The job's cadence is hourly; well past that means something broke. */
+/** The job's cadence is 30 minutes; well past that means something broke. */
 const STALE_AFTER_MS = 3 * 60 * 60 * 1000;
 const JOB_NAME = 'decision-inbox';
+
+/**
+ * Mirrors `JobRunService.RunLease`. An unfinished run older than this was killed
+ * rather than still working, so the button must not stay disabled on it forever.
+ */
+const RUN_LEASE_MS = 25 * 60 * 1000;
 
 @Injectable({ providedIn: 'root' })
 export class QuestionService {
@@ -81,6 +87,21 @@ export class QuestionService {
     this._questions().filter((q) => q.state === 'answered')
   );
 
+  private _runRequested = signal(false);
+  /** A press the runner has not picked up yet. */
+  readonly runRequested = this._runRequested.asReadonly();
+
+  /**
+   * A run is in flight when the newest row has no `finishedAt` — and is still
+   * within its lease. Past the lease it was killed, and continuing to report it as
+   * running would leave the button dead until someone noticed.
+   */
+  readonly runInFlight = computed(() => {
+    const run = this._lastRun();
+    if (!run || run.finishedAt) return false;
+    return this.now() - new Date(run.startedAt).getTime() < RUN_LEASE_MS;
+  });
+
   readonly heartbeatAge = computed(() => {
     const run = this._lastRun();
     if (!run) return null;
@@ -99,6 +120,7 @@ export class QuestionService {
   readonly heartbeatLabel = computed(() => {
     const run = this._lastRun();
     if (!run) return 'never checked';
+    if (this.runInFlight()) return 'triage running…';
 
     const age = this.heartbeatAge() ?? 0;
     const mins = Math.floor(age / 60_000);
@@ -131,6 +153,27 @@ export class QuestionService {
         next: (runs) => this._lastRun.set(runs[0] ?? null),
         error: () => {},
       });
+    // Server-side, so a reloaded tab still shows a press that hasn't been picked up.
+    this.http
+      .get<unknown[]>(`/api/jobs/requests?name=${JOB_NAME}`)
+      .subscribe({
+        next: (pending) => this._runRequested.set(pending.length > 0),
+        error: () => {},
+      });
+  }
+
+  /**
+   * Asks for a run. The dashboard is containerised and cannot start a host process,
+   * so this only records the request — the runner ticks every minute and claims it.
+   */
+  requestRun(): void {
+    this._runRequested.set(true);
+    this.http.post(`/api/jobs/requests`, { jobName: JOB_NAME }).subscribe({
+      error: (e) => {
+        console.error('Failed to request a run', e);
+        this._runRequested.set(false);
+      },
+    });
   }
 
   /** Called by the SSE service so live updates and REST share one store. */
@@ -147,6 +190,8 @@ export class QuestionService {
   setLastRun(run: JobRun): void {
     if (run.jobName !== JOB_NAME) return;
     this._lastRun.set(run);
+    // A run starting is the runner having claimed the request, so the press is served.
+    if (!run.finishedAt) this._runRequested.set(false);
   }
 
   answer(id: number, key: string, text?: string): void {

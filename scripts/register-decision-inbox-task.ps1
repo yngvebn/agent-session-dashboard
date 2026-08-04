@@ -33,7 +33,12 @@ param(
     [string]$TaskName        = 'Decision Inbox',
     [string]$RepoPath        = 'C:\github\retrospective.fun',
     [string]$DashboardUrl    = 'http://localhost:5900',
-    [int]$IntervalMinutes    = 30,
+    # How often the task fires at all. The cadence — how often it does real work — is
+    # -CadenceMinutes, enforced in the runner. Ticking often is what makes the
+    # dashboard's "Run now" button possible: it is picked up on the next tick.
+    [int]$IntervalMinutes    = 1,
+    [int]$CadenceMinutes     = 30,
+    [int]$TimeoutMinutes     = 20,
     [string]$ConfigDir       = $env:CLAUDE_CONFIG_DIR,
     [switch]$AllowDefaultConfig,
     [switch]$ShowWindow,
@@ -148,6 +153,8 @@ $arguments = @(
     '-File', "`"$runner`""
     '-RepoPath', "`"$RepoPath`""
     '-DashboardUrl', "`"$DashboardUrl`""
+    '-CadenceMinutes', $CadenceMinutes
+    '-TimeoutMinutes', $TimeoutMinutes
 ) + $(if ($ConfigDir) { @('-ConfigDir', "`"$ConfigDir`"") } else { @() }) -join ' '
 
 $action = New-ScheduledTaskAction -Execute $pwsh -Argument $arguments -WorkingDirectory $PSScriptRoot
@@ -160,22 +167,19 @@ $atLogon.Delay = 'PT3M'
 $repeating = New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes(7) `
     -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes)
 
-# Derived from the interval rather than fixed. The limit has to sit between two other
-# numbers: above the runner's own 20-minute Wait-Job guard, which stops a run *and*
-# records a 'failed' heartbeat, and below the next trigger, so a hung run cannot bleed
-# into the following window. A hard-coded 30 satisfied neither at -IntervalMinutes 30 —
-# it put the scheduler's hard kill exactly where the next fire wanted to start, which
-# quietly demotes the backstop to a coin flip with IgnoreNew.
-$executionLimit = [Math]::Min(30, [Math]::Max(5, $IntervalMinutes - 5))
-
-if ($executionLimit -lt 20) {
-    Write-Warning @"
-Execution limit is ${executionLimit}m, below the runner's own 20m timeout. The scheduler
-will hard-kill runs before run-decision-inbox.ps1 can record a 'failed' heartbeat, so a
-slow run looks like a silently missing one. Either raise -IntervalMinutes, or lower
--TimeoutMinutes in the runner to stay under ${executionLimit}m.
-"@
-}
+# Keyed to the RUN's own budget, not the trigger interval.
+#
+# It used to be min(30, interval - 5), on the reasoning that a hung run must not bleed
+# into the next window. That premise died with the one-minute tick: overlapping fires
+# are now the normal case — IgnoreNew drops ~29 of every 30 — and deriving from the
+# interval would give a 5-minute limit that kills every real run, which take 8-13.
+#
+# So the only constraint left is that the scheduler's hard kill must come *after* the
+# runner's own Wait-Job guard, which stops a run AND records a 'failed' heartbeat. A
+# scheduler kill records nothing, so it should only ever be the backstop.
+# Matches JobRunService.RunLease, which is how the store decides an unfinished run was
+# abandoned; keep the two in step.
+$executionLimit = $TimeoutMinutes + 5
 
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
@@ -214,7 +218,7 @@ Register-ScheduledTask -TaskName $TaskName `
     -Principal $principal `
     -Description 'Decision inbox for retrospective.fun — asks the founder about stalled backlog decisions and applies the answers. See agent-session-dashboard/docs/DECISION-INBOX.md' | Out-Null
 
-Write-Host "Registered '$TaskName': every $IntervalMinutes min, plus 3 min after logon." -ForegroundColor Green
+Write-Host "Registered '$TaskName': ticks every $IntervalMinutes min, works every $CadenceMinutes min (or on request), plus 3 min after logon." -ForegroundColor Green
 Write-Host "  Runs as : $env:USERDOMAIN\$env:USERNAME ($logonType$(if (-not $ShowWindow) { ' — no console window' } else { ' — console window will appear' }))"
 Write-Host "  Repo    : $RepoPath"
 Write-Host "  Runner  : $runner"

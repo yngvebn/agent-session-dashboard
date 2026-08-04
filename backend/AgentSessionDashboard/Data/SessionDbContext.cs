@@ -11,6 +11,7 @@ public class SessionDbContext(DbContextOptions<SessionDbContext> options) : DbCo
     public DbSet<SessionEvent> SessionEvents => Set<SessionEvent>();
     public DbSet<InboxQuestion> Questions => Set<InboxQuestion>();
     public DbSet<JobRun> JobRuns => Set<JobRun>();
+    public DbSet<JobRequest> JobRequests => Set<JobRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

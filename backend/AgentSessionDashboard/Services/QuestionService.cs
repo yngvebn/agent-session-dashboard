@@ -81,16 +81,28 @@ public class QuestionService(SessionDbContext db, SseService sse)
 
         // Transitional, and self-limiting: questions written before detectionKey existed
         // carry the three-part fingerprint, so the first keyed ask about one of them would
-        // otherwise miss and insert a duplicate. Every already-settled question would
-        // resurface once — losing its history, and skipping the dismissal cool-off, which
-        // is precisely the guarantee the cool-off was added to provide. Adopt the keyless
-        // row instead. Safe against the unique index: the keyed fingerprint has just been
-        // shown not to exist.
+        // otherwise miss and insert a duplicate card for the very same live finding.
+        //
+        // Only OPEN (or failed) rows are adopted, and that restriction was learned the hard
+        // way. Adopting settled rows too looked equivalent and is not: the store cannot tell
+        // "this is that finding, now with a name" from "this is a different finding on the
+        // same issue", and for a settled row the second reading is the likely one. Worse,
+        // the producer repointed subjectHash at the same time, so the adopted row saw a
+        // changed hash, reopened, and pushed an applied decision into History — RET-436 lost
+        // its `sweep` answer that way on 2026-08-04.
+        //
+        // So a settled keyless row is left alone and the keyed ask becomes its own question.
+        // The cost is that its cooling-off is skipped once, which errs toward asking rather
+        // than silencing — the right direction, and bounded to one occurrence per pre-key row.
+        //
+        // Safe against the unique index: the keyed fingerprint has just been shown not to exist.
         if (existing is null && !string.IsNullOrWhiteSpace(req.DetectionKey))
         {
             var legacyFingerprint = BuildFingerprint(req.Source, req.SubjectId, req.DetectionType);
             var legacy = await db.Questions.FirstOrDefaultAsync(
-                q => q.Fingerprint == legacyFingerprint && q.DetectionKey == null);
+                q => q.Fingerprint == legacyFingerprint
+                     && q.DetectionKey == null
+                     && (q.State == QuestionStates.Open || q.State == QuestionStates.Failed));
             if (legacy is not null)
             {
                 legacy.Fingerprint = fingerprint;

@@ -50,24 +50,44 @@
 
   <div class="dashboard-body">
     <main class="sessions-area">
-      @if (openQuestions().length > 0 || pendingQuestions().length > 0 || heartbeatStale()) {
-        <section class="inbox">
-          <div class="inbox-header">
-            <span class="inbox-label">Decisions ({{ openQuestions().length }})</span>
+      <!--
+        Always rendered, unlike before: the heartbeat and the run button are most
+        useful precisely when the pool is empty, which is when this used to vanish.
+      -->
+      <section class="inbox">
+        <div class="inbox-header">
+          <span class="inbox-label">Decisions ({{ openQuestions().length }})</span>
+          <div class="inbox-actions">
             <span class="inbox-heartbeat" [class.stale]="heartbeatStale()">{{ heartbeatLabel() }}</span>
+            <!--
+              Asks; it cannot run. Disabled while a run is in flight because a press
+              then is silently dropped by the task's IgnoreNew, which would read as
+              the button being broken.
+            -->
+            <button
+              class="run-btn"
+              [class.busy]="runInFlight() || runRequested()"
+              [disabled]="runInFlight() || runRequested()"
+              [title]="runInFlight() ? 'A run is already in progress'
+                     : runRequested() ? 'Requested — the runner picks this up within a minute'
+                     : 'Run triage now instead of waiting for the next window'"
+              (click)="requestRun()"
+            >
+              {{ runInFlight() ? 'Running…' : runRequested() ? 'Requested…' : 'Run now' }}
+            </button>
           </div>
-          <div class="inbox-cards">
-            @for (question of openQuestions(); track question.id) {
-              <app-question-card [question]="question" />
-            }
-          </div>
-          @if (pendingQuestions().length > 0) {
-            <p class="inbox-pending">
-              {{ pendingQuestions().length }} answered, waiting for the next run to apply.
-            </p>
+        </div>
+        <div class="inbox-cards">
+          @for (question of openQuestions(); track question.id) {
+            <app-question-card [question]="question" />
           }
-        </section>
-      }
+        </div>
+        @if (pendingQuestions().length > 0) {
+          <p class="inbox-pending">
+            {{ pendingQuestions().length }} answered, waiting for the next run to apply.
+          </p>
+        }
+      </section>
 
       <div class="sessions-grid">
         @if (activeSessions().length === 0 && inactiveSessions().length === 0 && closedSessions().length === 0) {

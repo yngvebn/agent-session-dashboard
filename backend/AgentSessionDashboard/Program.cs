@@ -121,6 +121,19 @@ using (var scope = app.Services.CreateScope())
     db.Database.ExecuteSqlRaw("""
         CREATE INDEX IF NOT EXISTS "IX_JobRuns_JobName_StartedAt" ON "JobRuns" ("JobName", "StartedAt")
     """);
+    // Manual "run now" requests. The container cannot start a host process, so this
+    // table is the only channel between the button and the job's own runner.
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "JobRequests" (
+            "Id" INTEGER NOT NULL CONSTRAINT "PK_JobRequests" PRIMARY KEY AUTOINCREMENT,
+            "JobName" TEXT NOT NULL,
+            "RequestedAt" TEXT NOT NULL,
+            "ConsumedAt" TEXT NULL
+        )
+    """);
+    db.Database.ExecuteSqlRaw("""
+        CREATE INDEX IF NOT EXISTS "IX_JobRequests_JobName_ConsumedAt" ON "JobRequests" ("JobName", "ConsumedAt")
+    """);
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
@@ -371,7 +384,8 @@ app.MapGet("/api/jobs/runs", async (string? name, int? limit, JobRunService jobR
     return Results.Ok(runs);
 });
 
-// POST /api/jobs/runs — the job records its own run
+// POST /api/jobs/runs — the job records its own run in one shot (start and finish
+// together), which is still what a no-op cadence window does.
 app.MapPost("/api/jobs/runs", async (RecordJobRunRequest body, JobRunService jobRuns) =>
 {
     if (string.IsNullOrWhiteSpace(body.JobName))
@@ -379,6 +393,59 @@ app.MapPost("/api/jobs/runs", async (RecordJobRunRequest body, JobRunService job
 
     var run = await jobRuns.RecordAsync(body);
     return Results.Created($"/api/jobs/runs/{run.Id}", run);
+});
+
+// POST /api/jobs/runs/start — opens an in-flight run. A row with no FinishedAt *is*
+// the "running" state: the UI disables the button on it, the runner avoids
+// overlapping itself with it, and there is no second field to disagree with it.
+app.MapPost("/api/jobs/runs/start", async (StartJobRunRequest body, JobRunService jobRuns) =>
+{
+    if (string.IsNullOrWhiteSpace(body.JobName))
+        return Results.BadRequest(new { error = "jobName is required" });
+
+    var run = await jobRuns.StartAsync(body.JobName);
+    return Results.Created($"/api/jobs/runs/{run.Id}", run);
+});
+
+// POST /api/jobs/runs/{id}/finish — closes it with the outcome
+app.MapPost("/api/jobs/runs/{id:int}/finish", async (int id, RecordJobRunRequest body, JobRunService jobRuns) =>
+{
+    var run = await jobRuns.FinishAsync(id, body);
+    return run is null ? Results.NotFound() : Results.Ok(run);
+});
+
+// ── Manual trigger ───────────────────────────────────────────────────────────
+// The dashboard cannot start a host process, so it cannot run the job. It can only
+// ask, and the runner — which ticks every minute — picks the request up.
+
+// GET /api/jobs/requests?name=decision-inbox — pending presses, so a reloaded tab
+// still shows "requested" rather than forgetting
+app.MapGet("/api/jobs/requests", async (string? name, JobRunService jobRuns) =>
+{
+    var pending = await jobRuns.GetPendingRequestsAsync(name ?? "decision-inbox");
+    return Results.Ok(pending);
+});
+
+// POST /api/jobs/requests — the button
+app.MapPost("/api/jobs/requests", async (StartJobRunRequest body, JobRunService jobRuns) =>
+{
+    if (string.IsNullOrWhiteSpace(body.JobName))
+        return Results.BadRequest(new { error = "jobName is required" });
+
+    var request = await jobRuns.RequestAsync(body.JobName);
+    return Results.Created($"/api/jobs/requests/{request.Id}", request);
+});
+
+// POST /api/jobs/requests/claim — the runner, at the START of a run. Claiming at the
+// start rather than the end is deliberate: a press that arrives mid-run must survive
+// to trigger the next tick, not be cleared by the run it was too late for.
+app.MapPost("/api/jobs/requests/claim", async (StartJobRunRequest body, JobRunService jobRuns) =>
+{
+    if (string.IsNullOrWhiteSpace(body.JobName))
+        return Results.BadRequest(new { error = "jobName is required" });
+
+    var claimed = await jobRuns.ClaimRequestsAsync(body.JobName);
+    return Results.Ok(new { claimed });
 });
 
 // ── SPA fallback — serve index.html for non-API GET requests ─────────────────

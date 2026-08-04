@@ -34,8 +34,10 @@ browser tab, so the `Todo` queue stays warm without a session being open.
 One scheduled job, two phases per run, talking HTTP to the existing dashboard.
 
 ```
-Task Scheduler (every 30 min, as user)
+Task Scheduler (ticks every 1 min, as user)
    └── run-decision-inbox.ps1
+         ├── due yet? last run ≥30 min ago, or a "Run now" press to claim → else exit silently
+         ├── already in flight? → exit silently
          ├── cheap pre-flight: GET /api/questions  → skip if nothing to do
          └── claude -p  (cwd = C:\github\retrospective.fun)
                ├── PHASE A — drain: apply answered questions to Linear via linctl
@@ -148,6 +150,7 @@ deliberately rather than re-litigated by accident.
 | 19 | **One focus issue per run, worked to completion** | Added 2026-08-04, corrected the same day — the first attempt was an ordering preference and could not execute (see below). Phase B picks one subject and asks every remaining blocker on it, up to the cap. No per-issue limit. |
 | 20 | **Dismissal is a cooling-off, not a mute** | Added 2026-08-04. Dismissing closed the card and resolved nothing, yet silenced the finding permanently — the question got exhausted while the problem stayed. Now it comes back after 7 days if still detected. |
 | 21 | **An applied answer also cools off, at 30 days** | Added 2026-08-04. Same reasoning as 20, one step further: an answer that chose *not* to act leaves the issue as un-fleet-ready as before, and the hash rebaseline then mutes it forever. Safe because detection is the filter — a resolved finding is never re-raised, so the window never fires. |
+| 22 | **One-minute tick, cadence in the script, "Run now" via a request row** | Added 2026-08-04. The container cannot start a host process, so the button records a `JobRequests` row and the tick claims it. Collapses trigger and manual path into one task, which is also the only way to avoid the second-task apply race. |
 
 ### Risk note on decision 13
 
@@ -268,6 +271,51 @@ One asymmetry worth keeping: a **changed subject** jumps the cap, for the reason
 always have — a full pool must not be able to hide a subject that moved. An **expired
 dismissal** does not; you already said "not now", so it waits for a free slot rather than
 making the inbox four deep. Decision 4 is what that protects.
+
+### "Run now": the button that cannot run anything (decision 22)
+
+The dashboard is containerised, so it cannot start a host process — the same forced
+constraint that makes it Linear-ignorant. A button therefore cannot run the job; it can
+only **ask**. So the task ticks every minute and the press is a `JobRequests` row it
+claims on the next tick.
+
+Collapsing the trigger and the manual path into **one task** is not just tidiness. A
+separate poker task would have been the second scheduled task the store cannot defend
+against: `IgnoreNew` is scoped per task name, and registering a second task alongside the
+live one is exactly what produced the apply race on 2026-08-04. `Start-ScheduledTask` on
+the existing name is safe; a parallel runner is not. (Verified the same day: starting the
+task needs **no elevation**, unlike modifying it.)
+
+Four details that are each load-bearing:
+
+* **Cadence moved out of Task Scheduler and into the runner**, measured from the last
+  recorded run. That makes it self-healing — after sleep or a missed window the next tick
+  runs immediately instead of waiting for the next boundary — and it means the trigger
+  interval and the cadence are now two separate numbers (`-IntervalMinutes 1`,
+  `-CadenceMinutes 30`).
+* **`ExecutionTimeLimit` had to invert.** It was `min(30, interval - 5)`, on the reasoning
+  that a hung run must not bleed into the next window. At a one-minute tick that yields
+  five minutes and kills every real run. The premise died with the tick: overlapping fires
+  are now *normal*, `IgnoreNew` drops ~29 of every 30. The only surviving constraint is
+  that the scheduler's kill must come after the runner's own `Wait-Job` guard — because the
+  guard records a `failed` heartbeat and a scheduler kill records nothing. So it is now
+  `TimeoutMinutes + 5`, kept in step with `JobRunService.RunLease`.
+* **"Running" is an unfinished `JobRuns` row, not a status field** — nothing that can
+  disagree with the heartbeat, and it fills the gap where the wrapper only wrote a row on
+  completion. Gated on a **lease**, not on the bare absence of `FinishedAt`: a hard kill
+  leaves an unfinished row forever, and a boolean would wedge the job permanently while
+  presenting as merely quiet.
+* **Requests are claimed at the start of a run, not the end.** Clearing on completion would
+  swallow a press that arrived mid-run — you clicked, something was already running, and
+  your click evaporated. All pending presses are claimed at once, so a flurry collapses into
+  the single run they were asking for.
+
+A tick that decides "not yet" **writes nothing**. At one-minute granularity a heartbeat per
+tick is ~1440 rows a day and destroys the meaning of "last checked". A tick that decides to
+act and then finds nothing to do still records `skipped`, as before — so the heartbeat keeps
+its ~30-minute rhythm and the UI's three-hour staleness threshold stays valid. Likewise an
+unreachable dashboard is now a silent no-op rather than a `failed` row: there is nowhere to
+record it, and 1440 failures a day would bury the real ones.
 
 ### Cadence: why 30 minutes is nearly free (decision 1, amended)
 
@@ -390,7 +438,19 @@ CREATE TABLE IF NOT EXISTS "JobRuns" (
     "Created"     INTEGER NOT NULL DEFAULT 0,
     "Applied"     INTEGER NOT NULL DEFAULT 0
 );
+
+-- "Run now" presses. One row per press rather than a flag: costs nothing and leaves
+-- an audit trail. ConsumedAt is set when the run it triggers STARTS (decision 22).
+CREATE TABLE IF NOT EXISTS "JobRequests" (
+    "Id"          INTEGER NOT NULL CONSTRAINT "PK_JobRequests" PRIMARY KEY AUTOINCREMENT,
+    "JobName"     TEXT NOT NULL,
+    "RequestedAt" TEXT NOT NULL,
+    "ConsumedAt"  TEXT NULL
+);
 ```
+
+A `JobRuns` row with `FinishedAt IS NULL` **is** a run in flight — there is no separate
+status column, so nothing can disagree with the heartbeat.
 
 `Fingerprint` is unique, so a re-ask (decision 9) **reopens the existing row** rather
 than inserting a duplicate: the current answer is pushed onto `History`, the answer
@@ -425,8 +485,13 @@ the other fork is re-detected next run and gets its own row.
 | `POST` | `/api/questions/{id}/answer` | `{ key, text? }` — from the card UI. |
 | `POST` | `/api/questions/{id}/dismiss` | Closes without a Linear write. Stamps `DismissedAt`; the finding may be raised again once the cooling-off window passes (decision 20). |
 | `POST` | `/api/questions/{id}/applied` | `{ ops, subjectHash }` — records what ran and rebaselines the hash (decision 10). |
-| `GET` | `/api/jobs/runs?name=decision-inbox&limit=1` | Heartbeat for the stale indicator. |
-| `POST` | `/api/jobs/runs` | Job records its own run. |
+| `GET` | `/api/jobs/runs?name=decision-inbox&limit=1` | Heartbeat, staleness, and "is a run in flight" (no `finishedAt`). |
+| `POST` | `/api/jobs/runs` | One-shot record — a tick that acted but found nothing to do. |
+| `POST` | `/api/jobs/runs/start` | Opens an in-flight run. |
+| `POST` | `/api/jobs/runs/{id}/finish` | Closes it with the outcome. |
+| `GET` | `/api/jobs/requests?name=…` | Pending "Run now" presses, so a reloaded tab remembers. |
+| `POST` | `/api/jobs/requests` | The button. Records a request; cannot run anything. |
+| `POST` | `/api/jobs/requests/claim` | Runner claims all pending presses, at run **start**. |
 
 Live delivery reuses the existing SSE machinery — `/api/sessions/stream` already
 streams, so pushing question events to the startpage is nearly free.
@@ -438,18 +503,27 @@ not in the prompt** — this is what makes a short trigger interval essentially 
 no-op run must not spend a token spinning up a session.
 
 ```
-1. GET /api/questions
-2. openCount   = questions where State = 'open'
-   pendingApply = questions where State = 'answered'
-3. if openCount >= 3 AND pendingApply = 0:
+1. GET /api/jobs/runs?limit=1
+       unreachable            → exit 0, silently (nowhere to record anything)
+       in flight, within lease → exit 0, silently
+2. GET /api/jobs/requests
+3. if no request AND last run < CadenceMinutes ago:
+       exit 0, silently                # ~29 ticks in 30. Writes NOTHING.
+4. GET /api/questions
+5. POST /api/jobs/requests/claim       # at the START, so a mid-run press survives
+6. if openCount >= 3 AND pendingApply = 0:
        POST /api/jobs/runs { Outcome = 'skipped' }
        exit 0                          # no LLM invoked
-4. claude -p "<inbox prompt>"          # cwd = C:\github\retrospective.fun
-5. POST /api/jobs/runs { Outcome, Detail, Created, Applied }
+7. POST /api/jobs/runs/start           # the in-flight row the UI reads
+8. claude -p "<inbox prompt>"          # cwd = C:\github\retrospective.fun
+9. POST /api/jobs/runs/{id}/finish { Outcome, Detail, Created, Applied }
 ```
 
-Step 3's condition matters: skipping on a full pool alone would strand answered
-questions forever.
+Step 6's condition matters: skipping on a full pool alone would strand answered
+questions forever. Step 3 is the difference between a one-minute tick being free and
+being 1440 heartbeat rows a day. Every exit after step 7 must go through
+`/finish` — a path that records a one-shot row instead would leave the in-flight
+row open and wedge the job until its lease expires.
 
 ## Prompt contract
 

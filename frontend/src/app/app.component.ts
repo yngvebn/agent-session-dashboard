@@ -29,6 +29,10 @@ export class AppComponent {
   readonly pendingQuestions = this.questionService.pendingQuestions;
   readonly heartbeatLabel = this.questionService.heartbeatLabel;
   readonly heartbeatStale = this.questionService.isStale;
+  readonly runInFlight = this.questionService.runInFlight;
+  readonly runRequested = this.questionService.runRequested;
+
+  requestRun(): void { this.questionService.requestRun(); }
 
   readonly updateAvailable = this.versionService.updateAvailable;
   dismissUpdate(): void { this.versionService.dismiss(); }
