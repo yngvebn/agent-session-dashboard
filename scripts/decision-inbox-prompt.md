@@ -35,9 +35,17 @@ your normal latitude, plus the protocol. Violating any of them is a failed run, 
 should say so in your summary rather than working around it.
 
 1. **You prep. You never build.** No edits to any file under
-   `C:\github\retrospective.fun`, no branches, no PRs, no `create-pr.ps1`. This is
-   narrower than your usual instinct to fix what you find — a scheduled job with nobody
-   watching is not the place to act on that instinct. Note it in your summary instead.
+   `C:\github\retrospective.fun`, no branches, no PRs, no `create-pr.ps1`, and you never
+   launch a fleet or promote anything to a claimable state. This is narrower than your
+   usual instinct to fix what you find — a scheduled job with nobody watching is not the
+   place to act on that instinct. Note it in your summary instead.
+
+   **Structuring the backlog is prep, not build.** Creating issues, splitting a ticket into
+   sub-issues, and setting parents are now allowed (see constraint 4) — decomposition is
+   exactly the preparation this job exists to do, and a created issue is inert until *you*
+   promote it. The build line is unchanged: no code, no git, no fleet, and **nothing you
+   create or touch is ever born claimable** (`Todo` / `fleet-safe`). What gets *worked on*
+   is still gated entirely behind an explicit promotion the founder makes later.
 2. **Never exceed 3 open questions.** The API enforces this with a 409; do not fight it.
 3. **Never decide anything consequential yourself.** Surfacing the fork *is* the job. If
    you catch yourself weighing product or architecture options, that is the question.
@@ -47,15 +55,46 @@ should say so in your summary rather than working around it.
    goes to the human with every option intact — you are showing your work so they can
    either lean on it or see which of their guardrails is arguing the wrong way. Never let
    the recommendation narrow the options you offer, and never treat it as an answer.
-4. **Only these Linear operations**, and nothing else — no creating issues, no setting
-   parents, no closing anything not explicitly chosen by an answer:
-   - set state (`--state`)
-   - add or remove labels (`--labels`, which replaces — always include existing ones)
+4. **Only these Linear operations**, and nothing else — close nothing that an answer did
+   not explicitly choose:
+   - set state (`--state`) — but never to `Todo`, and never on an issue you created this run
+   - add or remove labels (`--labels`, which replaces — always include existing ones) —
+     but never `fleet-safe` or `draft-merge` on an issue you created this run
    - add a `blocked-by` relation
    - append a section to a description
    - remove **one** pre-identified description section (phase A only, see below)
    - post a comment
-5. **Every write leaves a comment** citing the answer and its date.
+   - **create an issue** (title, description, team `RET`, optional parent) — only when an
+     answer explicitly calls for it, and see the rules below
+   - **set an issue's parent** — to nest children under the ticket being split
+
+   **Rules for creating issues.** This is the one operation that is not reversible by a
+   later label flip, so it carries its own discipline:
+   - **Only from an explicit answer.** The chosen option, or the custom text, must spell out
+     the split or the new ticket. Never create on your own initiative — proposing the split
+     is a *question*, not an apply. (Same line as constraint 3: you surface the fork, the
+     founder decides to split.)
+   - **Born inert, never claimable.** A created issue starts in `Backlog` (or `Triage`) with
+     no `fleet-safe`, no `draft-merge`, never `Todo`. It is structure, not work. It becomes
+     work only through a *separate, later* promotion the founder makes — which keeps the
+     one-click-to-deployed-code chain (see the design doc's risk note) from ever starting
+     here. This is the property the whole change rests on: do not weaken it.
+   - **Idempotent against a half-finished apply.** There is no lock on `answered → applied`,
+     and unlike a label set, a create run twice makes duplicates. So before creating a
+     child, re-read the parent's **current** children and skip any whose title already
+     matches — a re-run after a mid-apply death must converge, not duplicate.
+   - **Bounded.** A split is a handful of children (2–4 is typical). If an answer implies a
+     large decomposition, that is a planning session, not an inbox answer — `POST /failed`
+     and ask for a narrower decision rather than spawning a dozen tickets unattended.
+   - **The parent stops being executable.** After a split the original now has children, so
+     park or relabel it per the answer — it is an epic now, not a runnable ticket.
+   - A created child is a normal backlog subject from the next run on: phase B can pick it
+     up as a focus issue and ask *its* blockers, walking it toward fleet-ready one decision
+     at a time. That is the point — decomposition feeds the focus loop rather than ending it.
+5. **Every write leaves a comment** citing the answer and its date. A create leaves that
+   comment on the **parent** (or, for a standalone new ticket, on the ticket the question
+   was about), and it names the keys of every issue created — so the whole split is legible
+   from the thread you already review.
 6. **`draft-merge` is mandatory alongside `fleet-safe`** for any issue touching billing,
    payments, Stripe, auth, tenant isolation, entitlements/tier-gating, or GDPR/erasure.
    `fleet-claim` excludes `draft-merge` from autonomous merge, and that is the only thing
@@ -102,11 +141,14 @@ For each returned question:
      translate cleanly into the vocabulary in constraint 4, that is not licence to
      approximate it.
    - **Apply nothing rather than part of it.** If any operation the text implies falls
-     outside constraint 4 — creating an issue, setting a parent, rewriting a description
-     wholesale, touching code — do not apply the parts that do fit. `POST /failed` with
-     what was asked and precisely which part you cannot do, so it comes back as a card
-     saying so. A half-applied instruction is harder to reason about later than an
-     unapplied one, exactly as with the staleness pre-flight.
+     outside constraint 4 — rewriting a description wholesale, touching code, promoting to a
+     claimable state, or a decomposition too large to be a single answer — do not apply the
+     parts that do fit. `POST /failed` with what was asked and precisely which part you
+     cannot do, so it comes back as a card saying so. A half-applied instruction is harder
+     to reason about later than an unapplied one, exactly as with the staleness pre-flight.
+     (Note: creating issues and setting parents are now *inside* constraint 4, so a custom
+     answer that says "split into A and B" is applicable — subject to the create rules
+     there. It is the *oversized* or code-touching instruction that still fails.)
    - **Quote it verbatim** in the audit comment rather than paraphrasing, so the Linear
      thread records what was actually asked for.
 
@@ -205,6 +247,15 @@ it also take the ticket out of the wave (cancel it, or park it behind a `blocked
 An answer that decides against acting but leaves the ticket detectable will resurface
 later, correctly but pointlessly.
 
+**If the subject has a parent, read the parent and its siblings before you ask.** A
+sub-issue — especially one this job split out of a larger ticket — is sparse by design; the
+context that makes its question answerable lives in the parent's description and in what the
+sibling issues already decided. Read them first (`linctl issue get <parent> --json` gives
+children). Two payoffs: the question body carries the real context instead of a fragment, so
+it can be answered without opening Linear; and you avoid re-asking something a sibling
+already settled, or asking in a way that contradicts a decision made next door. A fork that
+is already resolved by the parent's decided scope is not a question — it is noise.
+
 ### Mechanical detections (prefer these)
 
 **Invoke the `fleet-prep` skill and use its step-2 assessment as your detector.** Do not
@@ -285,6 +336,13 @@ Rules for the content:
   should usually be the do-nothing/close path. **Never use `custom` as an option key** —
   it is reserved for an answer written by hand instead of chosen (see phase A). You do not
   need to offer an "other" option; the card always allows one.
+- **Splitting is a legitimate option now**, and often the honest one. Where a ticket is
+  really several tasks wearing one key, offer a "split into X and Y" option whose
+  `description` names each child and what it owns — phase A will create them (inert,
+  parented, non-claimable) when that option is chosen. This is frequently better than
+  forcing a scope decision onto a ticket that should not have carried it: the children come
+  back as their own focus subjects in later runs and get walked to fleet-ready one decision
+  at a time. Do not pre-create them yourself — offering the split *is* the question.
 - **`recommendation`** is required, and names one of your own option keys. `rationale` is
   ~40 words on **why that option over the others** — the tradeoff you actually weighed, not
   a restatement of the option's `description`, which already says what happens. Same

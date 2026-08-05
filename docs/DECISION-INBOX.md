@@ -85,7 +85,9 @@ Two things it does *not* get, which is why the prompt is not merely a duplicate:
   invocation succeeding.
 * **Constraints that *subtract*.** Nothing in the repo's context says "don't fix what you
   find" — rather the opposite. The typed-operation vocabulary is deliberately narrower
-  than what `CLAUDE.md` permits, so it has to be spelled out.
+  than what `CLAUDE.md` permits, so it has to be spelled out. (It widened once, for issue
+  creation — decision 24 — but the governing shape is still subtractive: a fixed list, and
+  nothing born claimable.)
 
 ### Auth — two separate credentials, both easy to get wrong
 
@@ -133,7 +135,7 @@ deliberately rather than re-litigated by accident.
 | 2 | **One job, two phases** — not two jobs | One prompt, one schedule, one thing that can silently stop firing. Two writers on the same rows buys nothing. |
 | 3 | **Producer: narrow + one wildcard slot** | Up to two mechanically-detected questions plus at most one open-ended judgement call per run. Bounds noise while leaving room to surface something unasked. |
 | 4 | **Cap 3 open questions**, refill only as answered | Above this the inbox becomes a second backlog you also ignore. The founder-energy gate applies to the tool itself. |
-| 5 | **Typed operations + audit comment** | Fixed vocabulary: set state, add/remove label, add `blocked-by` relation, append/remove a description section. Every write leaves a Linear comment citing the answer and its date. |
+| 5 | **Typed operations + audit comment** | Fixed vocabulary: set state, add/remove label, add `blocked-by` relation, append/remove a description section, **create an issue, set a parent** (decision 24). Every write leaves a Linear comment citing the answer and its date. |
 | 6 | **Surgical delete of the resolved options block**, archived to a comment first | A `Fix` section listing "Options: 1/2/3" is what makes a ticket un-fleetable. Deleting it is what makes the ticket unambiguous. Posting the removed text as a Linear comment *before* deleting means the reasoning moves to the comment thread rather than being destroyed. |
 | 7 | **Consumer reasons at apply time, but the delete is pinned** | State, label and relation ops are derived at apply time. The delete target is captured by the producer at ask time (heading text + content hash) and the apply bails if that hash moved. Free rein where it is cheap; pinned at the one destructive op. |
 | 8 | **Wildcard scope: backlog + repo/machine hygiene** | Lets it flag things no ticket covers — e.g. the 13 stale worktrees with nothing In Progress, a red nightly, lockfile drift. |
@@ -152,6 +154,7 @@ deliberately rather than re-litigated by accident.
 | 21 | **An applied answer also cools off, at 30 days** | Added 2026-08-04. Same reasoning as 20, one step further: an answer that chose *not* to act leaves the issue as un-fleet-ready as before, and the hash rebaseline then mutes it forever. Safe because detection is the filter — a resolved finding is never re-raised, so the window never fires. |
 | 22 | **One-minute tick, cadence in the script, "Run now" via a request row** | Added 2026-08-04. The container cannot start a host process, so the button records a `JobRequests` row and the tick claims it. Collapses trigger and manual path into one task, which is also the only way to avoid the second-task apply race. |
 | 23 | **A custom answer is a first-class answer** | Added 2026-08-05. Text with no option key is stored under the reserved `custom` key. "None of these" is a legitimate decision, and the strongest signal available that the question was framed badly — but the applier must never approximate it onto the nearest option. |
+| 24 | **The job may create and split issues** | Added 2026-08-05. Decomposition is prep, not build, so issue creation and parenting join the vocabulary — but only from an explicit answer, idempotently, and **never born claimable**. Reverses part of the original "no creating issues" line; see below for why it is safe and why it makes the whole thing better. |
 
 ### Risk note on decision 13
 
@@ -165,6 +168,13 @@ writes the code → create-pr.ps1 auto-merges → master auto-deploys to dev
 
 One click on a browser tab to deployed code, with no other human in the path. This is a
 deliberate choice for a single-operator machine, not an oversight.
+
+Issue creation (decision 24) deliberately does **not** extend this chain. The chain runs on
+`Todo` + `fleet-safe`, and a created issue is born with neither and can never be given
+either in the same run — so the only thing creation adds to the backlog is a node the fleet
+cannot claim. A split produces inert structure; turning any of it into work is still a
+separate, explicit promotion. The dangerous edge stays exactly where it was: the label, not
+the issue count.
 
 ### `fleet-safe` is re-earned, never inherited
 
@@ -317,6 +327,51 @@ act and then finds nothing to do still records `skipped`, as before — so the h
 its ~30-minute rhythm and the UI's three-hour staleness threshold stays valid. Likewise an
 unreachable dashboard is now a silent no-op rather than a `failed` row: there is nowhere to
 record it, and 1440 failures a day would bury the real ones.
+
+### Creating and splitting issues (decision 24)
+
+The first build forbade issue creation outright — "no creating issues, no setting parents"
+— on the reasoning that structural Linear changes were too consequential for an unattended
+job. In practice that made the job dishonest: many forks it surfaced were *really* "this
+ticket is three tasks in a trench coat," and the only moves it had were to park the whole
+thing or hand it back. So it now creates and splits.
+
+The reframe that makes this safe: **decomposition is prep, not build.** Splitting a ticket
+into sub-issues structures the backlog; it does not launch work. What the original ban was
+actually protecting — that nothing runs without the founder's say-so — is preserved by one
+property instead of by a blanket prohibition:
+
+> **A created issue is born inert.** `Backlog`, no `fleet-safe`, no `draft-merge`, never
+> `Todo`. It is structure, not work, until a *separate, later* promotion the founder makes.
+
+That single rule is what keeps decision 13's one-click-to-deployed-code chain from being
+extended. Creation adds nodes to the backlog; it never adds a claimable node, so the fleet
+cannot pick up anything the job made. The founder still reviews everything in Linear, and
+still gates every bit of actual work — exactly as before.
+
+Three more guardrails, each earning its place:
+
+* **Only from an explicit answer.** The chosen option or the custom text must spell out the
+  split. The job never decomposes on its own initiative — *proposing* a split is a question
+  (constraint 3), executing one is an apply. This is the same firewall as "derive ops from
+  `answerKey`, never from the recommendation."
+* **Idempotent against the apply race.** The `answered → applied` transition has no lock
+  (see Known limitations), and unlike a label set, a create run twice makes duplicates. So
+  the applier re-reads the parent's current children and skips any title that already
+  exists — a run that dies mid-apply converges on retry instead of spawning doubles. This is
+  the sharpest new risk and the reason creation carries more protocol than the other ops.
+* **Bounded.** A split is a handful of children. An answer implying a dozen is a planning
+  session, not an inbox answer, and `POST /failed`s rather than running unattended.
+
+**Why this makes the whole design better, not just more capable.** A created sub-issue is a
+normal backlog subject from the next run on. Phase B's focus-issue logic (decision 19) picks
+it up, reads its parent and siblings for context, and asks *its* blockers — walking it
+toward fleet-ready one decision at a time. So a single "split this" answer doesn't resolve a
+ticket; it seeds several new focus subjects that the exhaustion loop then works. Decomposition
+feeds the machine rather than terminating a branch of it. The sparse-child problem that comes
+with this — a freshly split issue has little of its own context — is handled in the prompt:
+before asking about any subject with a parent, the producer reads the parent and siblings, so
+the question carries real context and never re-asks what a sibling already settled.
 
 ### Cadence: why 30 minutes is nearly free (decision 1, amended)
 
@@ -549,10 +604,12 @@ Hard constraints for the prompt to carry:
 
 * Never exceed 3 open questions.
 * Never start implementation. This job preps; `fleet`/`go` execute. The boundary is the
-  same one `fleet-prep` draws.
+  same one `fleet-prep` draws. Creating and splitting issues is prep and is allowed
+  (decision 24); nothing it creates is ever born claimable.
 * Never make a consequential product or architecture decision on the founder's behalf —
   surfacing the fork *is* the job. Recommending one option while offering all of them is
-  explicitly not that (decision 17).
+  explicitly not that (decision 17); *proposing* a split is a question, *executing* one
+  needs the founder's answer.
 * Apply `draft-merge` alongside `fleet-safe` for billing / auth / tenant-isolation /
   GDPR tickets (see the risk note above).
 * Every Linear write leaves a comment citing the answer and its date.
