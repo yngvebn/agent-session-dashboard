@@ -40,6 +40,46 @@
   letter-spacing: -0.01em;
 }
 
+// Same idiom as .update-banner, in danger-red: an active Claude incident is
+// context for every hung session on the board.
+.claude-status-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  background: rgba(248, 81, 73, 0.12);
+  border: 1px solid rgba(248, 81, 73, 0.35);
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  color: #f85149;
+
+  .claude-status-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .claude-status-incident {
+    color: inherit;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.claude-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f85149;
+  box-shadow: 0 0 6px #f85149;
+  animation: pulse 2s infinite;
+  flex-shrink: 0;
+}
+
 .update-banner {
   display: flex;
   align-items: center;
@@ -189,10 +229,7 @@
   flex-direction: column;
   gap: 0.6rem;
   margin-bottom: 1.25rem;
-
-  // Capped so the grid tops out at three columns. The open-question cap is 3, so
-  // wider would only ever stretch cards, never fit another one.
-  max-width: 76rem;
+  // Full width, matching .sessions-grid below it — no max-width cap.
 }
 
 .inbox-cards {
@@ -202,7 +239,11 @@
   // the real layout: with the sidebar taking its share, a 1100px window leaves
   // 713px here, and two columns need 2 x floor + gap. A 24rem floor missed that by
   // 67px and dropped to a single column; 21rem needs 684px and fits.
-  grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+  //
+  // auto-FIT, not auto-fill: with at most three cards, auto-fill would leave empty
+  // 21rem tracks on a wide screen and cluster the cards to the left. auto-fit
+  // collapses those empty tracks so the cards stretch across the full width.
+  grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr));
   gap: 0.75rem;
   // Cards keep their natural height instead of stretching to the tallest in the row.
   align-items: start;
