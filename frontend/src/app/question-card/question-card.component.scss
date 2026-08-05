@@ -211,7 +211,34 @@
   line-height: 1.45;
 }
 
+.question-answer-own {
+  display: flex;
+  gap: 0.35rem;
+  align-items: stretch;
+}
+
+.own-answer-btn {
+  flex: 0 0 auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.12s, background 0.12s;
+
+  &:hover {
+    border-color: var(--status-running-text);
+    background: var(--status-running-bg);
+  }
+}
+
 .question-freetext {
+  flex: 1;
+  min-width: 0;
   background: var(--bg-primary);
   border: 1px solid var(--card-border);
   border-radius: 6px;

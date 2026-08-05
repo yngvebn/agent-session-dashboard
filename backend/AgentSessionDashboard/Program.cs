@@ -337,11 +337,14 @@ app.MapPost("/api/questions", async (UpsertQuestionRequest body, QuestionService
     });
 });
 
-// POST /api/questions/{id}/answer — from the card UI
+// POST /api/questions/{id}/answer — from the card UI.
+// Either pick an option (`key`), or write your own answer (`text` alone). Text with no
+// key becomes the reserved `custom` key, because none of the offered options being right
+// is itself a legitimate answer — and the most informative one the inbox can receive.
 app.MapPost("/api/questions/{id:int}/answer", async (int id, AnswerRequest body, QuestionService questions) =>
 {
-    if (string.IsNullOrWhiteSpace(body.Key))
-        return Results.BadRequest(new { error = "key is required" });
+    if (string.IsNullOrWhiteSpace(body.Key) && string.IsNullOrWhiteSpace(body.Text))
+        return Results.BadRequest(new { error = "either key or text is required" });
 
     var q = await questions.AnswerAsync(id, body.Key, body.Text);
     return q is null ? Results.NotFound() : Results.Ok(SseService.QuestionPayload(q));
@@ -481,7 +484,7 @@ record CreateShortcutRequest(string Url, string? Name);
 record UpdateNameRequest(string Name);
 
 // Decision inbox
-record AnswerRequest(string Key, string? Text);
+record AnswerRequest(string? Key, string? Text);
 record AppliedRequest(System.Text.Json.Nodes.JsonNode? Ops, string? SubjectHash);
 record ReopenRequest(string? Reason, string? SubjectHash);
 record FailedRequest(string? Detail);

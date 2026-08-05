@@ -127,3 +127,16 @@ public static class QuestionStates
     public const string Dismissed = "dismissed";
     public const string Failed = "failed";
 }
+
+public static class QuestionAnswers
+{
+    /// <summary>
+    /// Reserved <see cref="InboxQuestion.AnswerKey"/> for an answer written by hand
+    /// instead of chosen from the options — the instruction is in
+    /// <see cref="InboxQuestion.AnswerText"/>.
+    ///
+    /// Producers must never name an option <c>custom</c>; that is instruction-enforced
+    /// in the prompt rather than validated here, consistent with the rest of this store.
+    /// </summary>
+    public const string Custom = "custom";
+}

@@ -93,6 +93,26 @@ For each returned question:
    to the recommended key when an answer looks incomplete or surprising — that turns
    one-hop apply into no-hop apply. If `answerKey` makes no sense against current state,
    `POST /failed` and say so.
+
+   **`answerKey: custom` means none of your options were right.** The actual instruction is
+   in `answerText`, written by hand. Three rules, and the first is the one that matters:
+
+   - **Never map it onto the nearest option.** "They wrote X, option B is roughly X, so I
+     will do B" is the failure mode this whole field exists to prevent. If the text does not
+     translate cleanly into the vocabulary in constraint 4, that is not licence to
+     approximate it.
+   - **Apply nothing rather than part of it.** If any operation the text implies falls
+     outside constraint 4 — creating an issue, setting a parent, rewriting a description
+     wholesale, touching code — do not apply the parts that do fit. `POST /failed` with
+     what was asked and precisely which part you cannot do, so it comes back as a card
+     saying so. A half-applied instruction is harder to reason about later than an
+     unapplied one, exactly as with the staleness pre-flight.
+   - **Quote it verbatim** in the audit comment rather than paraphrasing, so the Linear
+     thread records what was actually asked for.
+
+   Count custom answers in your summary (`custom=<n>`). They are the strongest signal
+   available that a question was framed badly — worth more than any of your own findings,
+   because it says the options *and* the recommendation behind them were wrong.
 4. **Re-evaluate `fleet-safe` — never inherit it from the answer.**
 
    An answer resolves *one* fork. `fleet-safe` asserts the ticket passes **every**
@@ -262,7 +282,9 @@ Rules for the content:
   it can re-read the issue.
 - **Options** are concrete and mutually exclusive, 2–4 of them, each `description`
   saying what will actually happen — including any state or label change. One option
-  should usually be the do-nothing/close path.
+  should usually be the do-nothing/close path. **Never use `custom` as an option key** —
+  it is reserved for an answer written by hand instead of chosen (see phase A). You do not
+  need to offer an "other" option; the card always allows one.
 - **`recommendation`** is required, and names one of your own option keys. `rationale` is
   ~40 words on **why that option over the others** — the tradeoff you actually weighed, not
   a restatement of the option's `description`, which already says what happens. Same
@@ -289,7 +311,7 @@ Rules for the content:
 Print a one-line summary as your final message, nothing else:
 
 ```
-applied=<n> created=<n> reopened=<n> failed=<n> notes=<short text>
+applied=<n> created=<n> reopened=<n> failed=<n> custom=<n> notes=<short text>
 ```
 
 The wrapper parses this into the heartbeat, which is how a human finds out you stopped

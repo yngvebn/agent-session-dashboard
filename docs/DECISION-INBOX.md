@@ -151,6 +151,7 @@ deliberately rather than re-litigated by accident.
 | 20 | **Dismissal is a cooling-off, not a mute** | Added 2026-08-04. Dismissing closed the card and resolved nothing, yet silenced the finding permanently — the question got exhausted while the problem stayed. Now it comes back after 7 days if still detected. |
 | 21 | **An applied answer also cools off, at 30 days** | Added 2026-08-04. Same reasoning as 20, one step further: an answer that chose *not* to act leaves the issue as un-fleet-ready as before, and the hash rebaseline then mutes it forever. Safe because detection is the filter — a resolved finding is never re-raised, so the window never fires. |
 | 22 | **One-minute tick, cadence in the script, "Run now" via a request row** | Added 2026-08-04. The container cannot start a host process, so the button records a `JobRequests` row and the tick claims it. Collapses trigger and manual path into one task, which is also the only way to avoid the second-task apply race. |
+| 23 | **A custom answer is a first-class answer** | Added 2026-08-05. Text with no option key is stored under the reserved `custom` key. "None of these" is a legitimate decision, and the strongest signal available that the question was framed badly — but the applier must never approximate it onto the nearest option. |
 
 ### Risk note on decision 13
 
@@ -482,7 +483,7 @@ the other fork is re-detected next run and gets its own row.
 | --- | --- | --- |
 | `GET` | `/api/questions?state=open` | Card list. Also the wrapper's cheap pre-flight. |
 | `POST` | `/api/questions` | Upsert by fingerprint (producer). |
-| `POST` | `/api/questions/{id}/answer` | `{ key, text? }` — from the card UI. |
+| `POST` | `/api/questions/{id}/answer` | `{ key, text? }` — an option, with an optional note. Or `{ text }` alone: an answer written by hand, stored under the reserved `custom` key (decision 23). One of the two is required. |
 | `POST` | `/api/questions/{id}/dismiss` | Closes without a Linear write. Stamps `DismissedAt`; the finding may be raised again once the cooling-off window passes (decision 20). |
 | `POST` | `/api/questions/{id}/applied` | `{ ops, subjectHash }` — records what ran and rebaselines the hash (decision 10). |
 | `GET` | `/api/jobs/runs?name=decision-inbox&limit=1` | Heartbeat, staleness, and "is a run in flight" (no `finishedAt`). |
@@ -567,6 +568,35 @@ Disagreeing with a recommendation needs no new mechanism: pick a different optio
 the reasoning is worth keeping, say why in the free-text note. It lands in `AnswerText` on
 the same row as the recommendation it overruled, which is the record you want when
 deciding whether a guardrail needs moving.
+
+### Answering with your own words (decision 23)
+
+Disagreeing with the *options* is different from disagreeing with the recommendation, and
+until now there was no way to say it: `key` was required, so the only exits were to pick
+the least-wrong option or dismiss the card. Both lose the actual answer.
+
+The free-text field now does double duty, disambiguated by which button is pressed — click
+an option and the text rides along as a note, click **Answer with this** and the text *is*
+the answer, stored under the reserved key `custom` with no option chosen. The button only
+appears once you type, so the normal path stays one click. Producers must not name an
+option `custom`; that is instruction-enforced in the prompt, like everything else the
+store chooses to tolerate rather than validate.
+
+Two things make this safe to hand to an unattended applier:
+
+* **It must never be approximated onto the nearest option.** "They wrote X, option B is
+  roughly X, so I will do B" is precisely what a custom answer exists to prevent, and it
+  would silently convert an override back into the thing being overridden.
+* **Partial application is refused.** A hand-written instruction can easily imply
+  operations outside the typed vocabulary — creating an issue, setting a parent, touching
+  code. If any part falls outside it, phase A applies *none* of it and `POST /failed`s with
+  what was asked and which part it cannot do, so the card comes back saying so. Same
+  reasoning as decision 16: a half-applied instruction is harder to reason about than an
+  unapplied one.
+
+Runs report `custom=<n>` in the summary. That count is worth more than any finding the job
+produces on its own — it says the options, and the recommendation behind them, were wrong,
+which is exactly the guardrail signal decision 17 was built to surface.
 
 ## Deliberately out of scope
 

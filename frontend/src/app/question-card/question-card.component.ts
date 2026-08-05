@@ -51,9 +51,24 @@ export class QuestionCardComponent {
     this.expanded.update((current) => (current === key ? null : key));
   }
 
+  /** True once there is something that could stand as an answer on its own. */
+  readonly hasOwnAnswer = computed(() => this.freeText().trim().length > 0);
+
   choose(key: string): void {
     const text = this.freeText().trim();
     this.questionService.answer(this.question().id, key, text || undefined);
+  }
+
+  /**
+   * Answer with the typed text and no option. Distinct from attaching a note to an
+   * option: none of the offered options being right is itself an answer, and the most
+   * informative one this inbox can get — it says the options, and the recommendation
+   * behind them, were wrong.
+   */
+  answerOwn(): void {
+    const text = this.freeText().trim();
+    if (!text) return;
+    this.questionService.answer(this.question().id, null, text);
   }
 
   dismiss(): void {

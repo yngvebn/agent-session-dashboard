@@ -213,18 +213,27 @@ public class QuestionService(SessionDbContext db, SseService sse)
             ? "Re-asked: the subject changed after this was settled."
             : priorState == QuestionStates.Dismissed
                 ? $"Re-asked: you dismissed this {daysSettled}d ago and it is still outstanding."
-                : $"Re-asked: you answered '{priorAnswer}' {daysSettled}d ago and this is still blocking fleet-readiness.";
+                : priorAnswer == QuestionAnswers.Custom
+                    ? $"Re-asked: your own answer {daysSettled}d ago did not settle this."
+                    : $"Re-asked: you answered '{priorAnswer}' {daysSettled}d ago and this is still blocking fleet-readiness.";
         await db.SaveChangesAsync();
         sse.BroadcastQuestionUpdate(existing);
         return new UpsertResult(existing, "reopened");
     }
 
-    public async Task<InboxQuestion?> AnswerAsync(int id, string key, string? text)
+    /// <summary>
+    /// Records an answer. A blank <paramref name="key"/> with text is a *custom* answer —
+    /// the human rejecting the whole menu rather than choosing from it — and is stored
+    /// under <see cref="QuestionAnswers.Custom"/> so everything that switches on
+    /// <see cref="InboxQuestion.AnswerKey"/> keeps working. The instruction itself lives
+    /// in <see cref="InboxQuestion.AnswerText"/>.
+    /// </summary>
+    public async Task<InboxQuestion?> AnswerAsync(int id, string? key, string? text)
     {
         var q = await GetByIdAsync(id);
         if (q is null) return null;
 
-        q.AnswerKey = key;
+        q.AnswerKey = string.IsNullOrWhiteSpace(key) ? QuestionAnswers.Custom : key;
         q.AnswerText = text;
         q.AnsweredAt = DateTime.UtcNow;
         q.State = QuestionStates.Answered;

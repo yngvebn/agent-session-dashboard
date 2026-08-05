@@ -87,11 +87,26 @@
     }
   </div>
 
-  <input
-    class="question-freetext"
-    type="text"
-    placeholder="Optional note to send with your answer…"
-    [value]="freeText()"
-    (input)="freeText.set($any($event.target).value)"
-  />
+  <!--
+    One field, two jobs, disambiguated by which button you press: click an option and
+    this rides along as a note; click "Answer with this" and it *is* the answer, with no
+    option chosen. Nothing appears until you type, so the normal path stays one click.
+  -->
+  <div class="question-answer-own">
+    <input
+      class="question-freetext"
+      type="text"
+      placeholder="Note to send with your answer — or write your own answer…"
+      [value]="freeText()"
+      (input)="freeText.set($any($event.target).value)"
+      (keyup.enter)="answerOwn()"
+    />
+    @if (hasOwnAnswer()) {
+      <button
+        class="own-answer-btn"
+        (click)="answerOwn()"
+        title="Answer with this text instead of picking an option"
+      >Answer with this</button>
+    }
+  </div>
 </article>

@@ -194,9 +194,13 @@ export class QuestionService {
     if (!run.finishedAt) this._runRequested.set(false);
   }
 
-  answer(id: number, key: string, text?: string): void {
+  /**
+   * Answers a question. Pass `key` to choose an option, or omit it and pass `text` to
+   * write your own — the server stores that under the reserved `custom` key.
+   */
+  answer(id: number, key: string | null, text?: string): void {
     // Optimistic — the card should stop being actionable the instant you click.
-    this.patchLocal(id, { state: 'answered', answerKey: key, answerText: text ?? null });
+    this.patchLocal(id, { state: 'answered', answerKey: key ?? 'custom', answerText: text ?? null });
     this.http.post<InboxQuestion>(`/api/questions/${id}/answer`, { key, text }).subscribe({
       next: (updated) => this.upsert(updated),
       error: (e) => {
