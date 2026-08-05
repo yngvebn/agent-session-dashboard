@@ -55,6 +55,11 @@ param(
     [string]$JobName      = 'decision-inbox',
     [string]$ConfigDir    = $env:CLAUDE_CONFIG_DIR,
     [int]$Cap             = 3,
+    # Display name for the Claude session, so these runs are identifiable in the
+    # dashboard's session list instead of appearing as the repo's directory name —
+    # which is what the reporter hook falls back to, and is indistinguishable from
+    # a session you opened yourself in the same repo.
+    [string]$SessionName  = 'Issue triage',
     [int]$CadenceMinutes  = 30,
     [int]$TimeoutMinutes  = 20,
     [switch]$DryRun
@@ -122,12 +127,14 @@ if (-not (Test-Path $RepoPath)) {
 # Answered from the heartbeat, before anything else is fetched. Silent on every
 # "no" — see the note in .DESCRIPTION about why a per-tick heartbeat is harmful.
 
-$lastRun = @(Get-Json "/api/jobs/runs?name=$JobName&limit=1")
-if ($null -eq $lastRun) {
-    Write-Log "Dashboard unreachable at $DashboardUrl — nothing to do, and nowhere to say so."
-    exit 0
-}
-$lastRun = $lastRun | Select-Object -First 1
+# Filter $null out of every list read. Get-Json returns $null on an unreachable
+# dashboard, and @($null).Count is 1, not 0 — so a bare @(Get-Json ...) reads a dead
+# endpoint as "one item". That is not academic: it is exactly what ran the job 60×/hour
+# overnight on 2026-08-05, when a stale container image 404'd the requests endpoint and
+# every tick saw a phantom pending request. `| Where-Object { $_ }` collapses both the
+# error ($null) and the empty-list cases to a real count of 0.
+$lastRun = @(Get-Json "/api/jobs/runs?name=$JobName&limit=1" | Where-Object { $_ }) |
+    Select-Object -First 1
 
 # A run already in flight. Belt and braces with the task's IgnoreNew, and gated on the
 # LEASE rather than on the bare absence of finishedAt: a hard-killed run leaves an
@@ -142,9 +149,13 @@ if ($lastRun -and -not $lastRun.finishedAt) {
     Write-Log ("Abandoning a stale in-flight run ({0:N0}m old, past its lease)." -f $inFlightFor.TotalMinutes)
 }
 
-$requests = @(Get-Json "/api/jobs/requests?name=$JobName")
+$requests = @(Get-Json "/api/jobs/requests?name=$JobName" | Where-Object { $_ })
 $requested = $requests.Count -gt 0
 
+# An unreachable dashboard now lands here with $lastRun null and $requested false, so it
+# is treated as "due" and proceeds to the questions fetch below — which returns $null and
+# exits silently. No heartbeat, no LLM, no flood. A genuinely fresh install (no runs yet)
+# takes the same path and correctly runs for the first time.
 $sinceLast = if ($lastRun) {
     (Get-Date).ToUniversalTime() - ([datetime]$lastRun.startedAt).ToUniversalTime()
 } else {
@@ -266,17 +277,18 @@ try {
     # no Write/Edit, so the job cannot modify the repo even by accident, which is
     # also constraint 1 in the prompt enforced mechanically rather than by trust.
     $job = Start-Job -ScriptBlock {
-        param($claude, $prompt, $repoPath, $transcript, $configDir)
+        param($claude, $prompt, $repoPath, $transcript, $configDir, $sessionName)
         Set-Location $repoPath
         # Start-Job spawns a fresh process — the parent's $env: assignment above does
         # not carry over, so set it again here.
         if ($configDir) { $env:CLAUDE_CONFIG_DIR = $configDir }
         $prompt | & $claude -p `
+            --name $sessionName `
             --permission-mode bypassPermissions `
             --allowedTools 'Bash' 'Read' 'Grep' 'Glob' `
             --disallowedTools 'Write' 'Edit' 'NotebookEdit' `
             --output-format text 2>&1 | Tee-Object -FilePath $transcript
-    } -ArgumentList $claude, $prompt, $RepoPath, $transcript, $ConfigDir
+    } -ArgumentList $claude, $prompt, $RepoPath, $transcript, $ConfigDir, $SessionName
 
     if (-not (Wait-Job $job -Timeout ($TimeoutMinutes * 60))) {
         Stop-Job $job -ErrorAction SilentlyContinue
