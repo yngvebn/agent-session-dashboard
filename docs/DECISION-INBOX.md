@@ -461,6 +461,7 @@ CREATE TABLE IF NOT EXISTS "Questions" (
     "Fingerprint"   TEXT NOT NULL,   -- source|subjectId|detectionType[|detectionKey]
     "Source"        TEXT NOT NULL,   -- 'ret-backlog' | 'hygiene'
     "SubjectId"     TEXT NULL,       -- 'RET-381'; NULL for hygiene findings
+    "SubjectTitle"  TEXT NULL,       -- the issue's own title, for card context
     "DetectionType" TEXT NOT NULL,   -- options-menu | unpinned-migration | epic-no-children
                                      -- | gating-mismatch | fleet-blocked | wildcard
     "DetectionKey"  TEXT NULL,       -- which finding of that type — part of the identity

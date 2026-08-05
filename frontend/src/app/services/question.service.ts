@@ -26,6 +26,8 @@ export interface InboxQuestion {
   fingerprint: string;
   source: string;
   subjectId: string | null;
+  /** The subject's own tracker title, for context beyond the bare key. */
+  subjectTitle: string | null;
   detectionType: string;
   /** Identifies the specific finding — two questions can share subject and type. */
   detectionKey: string | null;

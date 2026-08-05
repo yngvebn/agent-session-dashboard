@@ -35,6 +35,14 @@ public class InboxQuestion
     public string? SubjectId { get; set; }
 
     /// <summary>
+    /// The subject's own title in the tracker — e.g. "Optimize CI for client-only
+    /// changes" — shown on the card so the key is not the only context. The producer
+    /// supplies it (the dashboard never talks to Linear); null for subjectless findings
+    /// or questions written before this field existed.
+    /// </summary>
+    public string? SubjectTitle { get; set; }
+
+    /// <summary>
     /// What kind of detection produced this: <c>options-menu</c>,
     /// <c>unpinned-migration</c>, <c>epic-no-children</c>,
     /// <c>gating-mismatch</c>, <c>fleet-blocked</c>, <c>wildcard</c>.

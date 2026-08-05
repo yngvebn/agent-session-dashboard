@@ -129,6 +129,7 @@ public class QuestionService(SessionDbContext db, SseService sse)
                 Fingerprint = fingerprint,
                 Source = req.Source,
                 SubjectId = req.SubjectId,
+                SubjectTitle = req.SubjectTitle,
                 DetectionType = req.DetectionType,
                 DetectionKey = req.DetectionKey,
                 Title = req.Title,
@@ -332,6 +333,8 @@ public class QuestionService(SessionDbContext db, SseService sse)
         q.SubjectHash = req.SubjectHash;
         q.Source = req.Source;
         q.SubjectId = req.SubjectId;
+        // Refreshed on every ask so a renamed issue updates its card.
+        q.SubjectTitle = req.SubjectTitle;
         q.DetectionType = req.DetectionType;
         // Rewritten for completeness only — this row was found *by* fingerprint, so
         // these already match by construction. A different key is a different row.
@@ -390,6 +393,7 @@ public class QuestionService(SessionDbContext db, SseService sse)
 public record UpsertQuestionRequest(
     string Source,
     string? SubjectId,
+    string? SubjectTitle,
     string DetectionType,
     string? DetectionKey,
     string Title,

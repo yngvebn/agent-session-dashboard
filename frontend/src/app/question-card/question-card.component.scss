@@ -15,9 +15,18 @@
 
 .question-header {
   display: flex;
-  align-items: center;
+  // flex-start, not center: the heading can now be two lines (badges + issue title)
+  // and the dismiss button should stay pinned to the top-right, not drift to the middle.
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.question-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0; // lets the title wrap/shrink instead of forcing the header wider
 }
 
 .question-meta {
@@ -25,6 +34,14 @@
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
+}
+
+.subject-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1.3;
 }
 
 .subject-badge {

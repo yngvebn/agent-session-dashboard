@@ -113,6 +113,7 @@ public class SseService
         q.Fingerprint,
         q.Source,
         q.SubjectId,
+        q.SubjectTitle,
         q.DetectionType,
         q.DetectionKey,
         q.Title,

@@ -80,6 +80,7 @@ using (var scope = app.Services.CreateScope())
             "Fingerprint" TEXT NOT NULL,
             "Source" TEXT NOT NULL,
             "SubjectId" TEXT NULL,
+            "SubjectTitle" TEXT NULL,
             "DetectionType" TEXT NOT NULL,
             "DetectionKey" TEXT NULL,
             "Title" TEXT NOT NULL,
@@ -103,6 +104,7 @@ using (var scope = app.Services.CreateScope())
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Questions\" ADD COLUMN \"Recommendation\" TEXT NULL"); } catch { }
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Questions\" ADD COLUMN \"DetectionKey\" TEXT NULL"); } catch { }
     try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Questions\" ADD COLUMN \"DismissedAt\" TEXT NULL"); } catch { }
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE \"Questions\" ADD COLUMN \"SubjectTitle\" TEXT NULL"); } catch { }
     db.Database.ExecuteSqlRaw("""
         CREATE UNIQUE INDEX IF NOT EXISTS "IX_Questions_Fingerprint" ON "Questions" ("Fingerprint")
     """);

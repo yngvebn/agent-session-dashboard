@@ -1,20 +1,29 @@
 <article class="question-card" [class.failed]="question().state === 'failed'">
   <header class="question-header">
-    <div class="question-meta">
-      @if (question().subjectId) {
-        @if (subjectUrl()) {
-          <a class="subject-badge" [href]="subjectUrl()" target="_blank" rel="noopener">{{ question().subjectId }}</a>
-        } @else {
-          <span class="subject-badge">{{ question().subjectId }}</span>
+    <div class="question-heading">
+      <div class="question-meta">
+        @if (question().subjectId) {
+          @if (subjectUrl()) {
+            <a class="subject-badge" [href]="subjectUrl()" target="_blank" rel="noopener">{{ question().subjectId }}</a>
+          } @else {
+            <span class="subject-badge">{{ question().subjectId }}</span>
+          }
         }
-      }
+        <!--
+          The key is shown, not decoration: one issue can now hold several questions of
+          the same type, and without it two cards on the same ticket read identically.
+        -->
+        <span class="detection-badge">{{ question().detectionType }}</span>
+        @if (question().detectionKey) {
+          <span class="detection-key" title="Which finding on this subject">{{ question().detectionKey }}</span>
+        }
+      </div>
       <!--
-        The key is shown, not decoration: one issue can now hold several questions of
-        the same type, and without it two cards on the same ticket read identically.
+        The issue's own title, so the key is not the only context for which ticket this
+        is about. Distinct from the question title below, which is the fork being asked.
       -->
-      <span class="detection-badge">{{ question().detectionType }}</span>
-      @if (question().detectionKey) {
-        <span class="detection-key" title="Which finding on this subject">{{ question().detectionKey }}</span>
+      @if (question().subjectTitle) {
+        <p class="subject-title">{{ question().subjectTitle }}</p>
       }
     </div>
     <button

@@ -294,6 +294,7 @@ curl -s -X POST http://localhost:5900/api/questions \
   -d '{
     "source": "ret-backlog",
     "subjectId": "RET-381",
+    "subjectTitle": "Optimize CI pipeline for client-only changes",
     "detectionType": "options-menu",
     "detectionKey": "compose-e2e-paths-filter",
     "title": "CI paths-filter: should client-only changes run the compose E2E?",
@@ -315,6 +316,10 @@ curl -s -X POST http://localhost:5900/api/questions \
 
 Rules for the content:
 
+- **`subjectTitle`** is the subject's *current* title in Linear (you already have it from
+  `linctl issue get`). Send it whenever there is a subject — the card shows it next to the
+  key so the founder sees which ticket this is without opening Linear. Omit for subjectless
+  hygiene/wildcard findings.
 - **`detectionKey`** is required, and names the *specific finding* — not the issue, not the
   category. `compose-e2e-paths-filter`, `process-managers-table`. Identity is
   `source|subjectId|detectionType|detectionKey`, so this is the field that lets one issue
