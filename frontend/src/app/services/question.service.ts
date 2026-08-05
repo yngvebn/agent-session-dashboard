@@ -50,7 +50,7 @@ export interface JobRun {
   jobName: string;
   startedAt: string;
   finishedAt: string | null;
-  outcome: 'ok' | 'skipped' | 'failed' | null;
+  outcome: 'ok' | 'skipped' | 'partial' | 'failed' | null;
   detail: string | null;
   created: number;
   applied: number;

@@ -30,5 +30,8 @@ public static class JobOutcomes
 {
     public const string Ok = "ok";
     public const string Skipped = "skipped";
+    /// <summary>Ran and produced a summary, but one or more item applies were declined.
+    /// A healthy run — the declined items surface individually as failed-state cards.</summary>
+    public const string Partial = "partial";
     public const string Failed = "failed";
 }

@@ -319,6 +319,17 @@ if ($output -match 'Failed to authenticate|OAuth session expired|Invalid API key
     exit 1
 }
 
+# A transient Anthropic overload is not a job failure — it is the API's capacity, not
+# ours, and the next tick retries for free. Treat it like the unreachable-dashboard case:
+# a no-op, recorded as `skipped` with a clear reason so the heartbeat stays green and the
+# history still shows what happened. Marking it `failed` cried wolf for something the
+# founder cannot fix and that self-clears in 30 minutes.
+if (-not $summary -and $output -match 'API Error: 529|Overloaded|rate.?limit|overloaded_error') {
+    Complete-Run -Outcome 'skipped' -Detail "Anthropic API overloaded (transient) — no run this tick, will retry. Transcript: $transcript"
+    Write-Warning "API overloaded; skipping this tick."
+    exit 0
+}
+
 if (-not $summary) {
     $tail = ($output -split "`n" | Where-Object { $_.Trim() } | Select-Object -Last 3) -join ' / '
     Complete-Run -Outcome 'failed' -Detail "No summary line in output. Tail: $tail. Transcript: $transcript"
@@ -330,7 +341,15 @@ $created = if ($summary -match 'created=(\d+)') { [int]$Matches[1] } else { 0 }
 $applied = if ($summary -match 'applied=(\d+)') { [int]$Matches[1] } else { 0 }
 $failed  = if ($summary -match 'failed=(\d+)')  { [int]$Matches[1] } else { 0 }
 
-$outcome = if ($failed -gt 0) { 'failed' } else { 'ok' }
+# `failed>0` from a run that produced a summary means the session ran fine and one
+# QUESTION's apply was declined — often correctly (the RET-72 split refused because the
+# work already existed; an oversized decomposition sent back for a narrower answer). That
+# is a `partial` run, not a broken one: the job is healthy, and the single declined item
+# is already visible to the founder as a `failed`-state card. Only a session that could
+# not run at all (auth, no summary, timeout) is `failed`. Otherwise the create feature —
+# which declines by design far more than the old label-only vocabulary did — would paint
+# the heartbeat red on nearly every productive run.
+$outcome = if ($failed -gt 0) { 'partial' } else { 'ok' }
 Complete-Run -Outcome $outcome -Detail $summary.Trim() -Created $created -Applied $applied
 
 Write-Log "Done: $summary"
