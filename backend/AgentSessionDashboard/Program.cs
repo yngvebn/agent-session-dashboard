@@ -20,8 +20,15 @@ builder.Services.AddScoped<ShortcutService>();
 builder.Services.AddScoped<QuestionService>();
 builder.Services.AddScoped<JobRunService>();
 builder.Services.AddSingleton<SseService>();
+builder.Services.AddSingleton<ClaudeStatusService>();
 builder.Services.AddHostedService<SessionStatusWorker>();
+builder.Services.AddHostedService<ClaudeStatusWorker>();
 builder.Services.AddHttpClient("scraper");
+builder.Services.AddHttpClient("claude-status", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("agent-session-dashboard");
+});
 
 // ── CORS — allow any origin (Angular dev server) ──────────────────────────────
 builder.Services.AddCors(options =>
@@ -186,6 +193,11 @@ app.MapPost("/api/sessions/event", async (
 // GET /api/version — returns the git SHA baked in at build time
 var gitSha = Environment.GetEnvironmentVariable("GIT_SHA") ?? "unknown";
 app.MapGet("/api/version", () => Results.Ok(new { sha = gitSha }));
+
+// GET /api/claude-status — active incidents from status.claude.com, proxied
+// because the feed has no CORS headers. Refreshed by ClaudeStatusWorker.
+app.MapGet("/api/claude-status", (ClaudeStatusService claudeStatus) =>
+    Results.Ok(claudeStatus.Snapshot()));
 
 // GET /api/sessions — returns all sessions not older than 7 days
 app.MapGet("/api/sessions", async (SessionService sessionService) =>

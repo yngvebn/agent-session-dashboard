@@ -40,6 +40,18 @@
     </div>
   </header>
 
+  @if (claudeIncidents().length > 0) {
+    <div class="claude-status-banner">
+      <span class="claude-status-dot"></span>
+      <span class="claude-status-label">Claude status</span>
+      @for (incident of claudeIncidents(); track incident.id) {
+        <a class="claude-status-incident" [href]="incident.link" target="_blank" rel="noopener">
+          <strong>{{ incident.status }}</strong> — {{ incident.title }}
+        </a>
+      }
+    </div>
+  }
+
   @if (updateAvailable()) {
     <div class="update-banner">
       <span>Update available —</span>

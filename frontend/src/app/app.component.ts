@@ -1,6 +1,7 @@
 import { Component, inject, computed, signal, effect } from '@angular/core';
 import { Session, SessionSseService } from './services/session-sse.service';
 import { VersionService } from './services/version.service';
+import { ClaudeStatusService } from './services/claude-status.service';
 import { QuestionService } from './services/question.service';
 import { SessionCardComponent } from './session-card/session-card.component';
 import { SessionShelfComponent } from './session-shelf/session-shelf.component';
@@ -36,6 +37,9 @@ export class AppComponent {
 
   readonly updateAvailable = this.versionService.updateAvailable;
   dismissUpdate(): void { this.versionService.dismiss(); }
+
+  private claudeStatusService = inject(ClaudeStatusService);
+  readonly claudeIncidents = this.claudeStatusService.incidents;
 
   readonly connected = this.sseService.connected;
   readonly notificationPermission = this.sseService.notificationPermission;

@@ -24,12 +24,6 @@ export class SessionCardComponent implements OnInit, OnDestroy {
     return map.get(this.session.sessionId) ?? [];
   });
 
-  readonly cost = computed(() => {
-    const inCost = (this.session.tokensIn / 1_000_000) * 3;
-    const outCost = (this.session.tokensOut / 1_000_000) * 15;
-    return inCost + outCost;
-  });
-
   get hasTokens(): boolean {
     return this.session.tokensIn > 0 || this.session.tokensOut > 0;
   }
