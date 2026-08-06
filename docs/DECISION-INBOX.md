@@ -155,6 +155,7 @@ deliberately rather than re-litigated by accident.
 | 22 | **One-minute tick, cadence in the script, "Run now" via a request row** | Added 2026-08-04. The container cannot start a host process, so the button records a `JobRequests` row and the tick claims it. Collapses trigger and manual path into one task, which is also the only way to avoid the second-task apply race. |
 | 23 | **A custom answer is a first-class answer** | Added 2026-08-05. Text with no option key is stored under the reserved `custom` key. "None of these" is a legitimate decision, and the strongest signal available that the question was framed badly — but the applier must never approximate it onto the nearest option. |
 | 24 | **The job may create and split issues** | Added 2026-08-05. Decomposition is prep, not build, so issue creation and parenting join the vocabulary — but only from an explicit answer, idempotently, and **never born claimable**. Reverses part of the original "no creating issues" line; see below for why it is safe and why it makes the whole thing better. |
+| 25 | **Focus prefers `fleet-safe`-without-`draft-merge` work** | Added 2026-08-08. A non-`draft-merge` ticket runs the whole chain unattended; a `draft-merge` one stalls at a human merge gate, so it does not decouple throughput from presence. Draft-merge-avoidance is now the primary focus-selection axis, ahead of "closest to ready" — a prioritisation, not a change to the constraint-6 safety gate. |
 
 ### Risk note on decision 13
 
@@ -372,6 +373,34 @@ feeds the machine rather than terminating a branch of it. The sparse-child probl
 with this — a freshly split issue has little of its own context — is handled in the prompt:
 before asking about any subject with a parent, the producer reads the parent and siblings, so
 the question carries real context and never re-asks what a sibling already settled.
+
+### Focus prefers autonomous work (decision 25)
+
+After a few days running, the sharpest lever turned out to be *which* ticket the focus loop
+(decision 19) pours a run into. It was picking by "closest to fleet-ready," blind to what
+happens *after* the label lands:
+
+* A ticket that reaches `fleet-safe` and is **not** in a `draft-merge` category runs the
+  whole chain with nobody in it — the fleet claims it, builds it, `create-pr.ps1`
+  auto-merges, master deploys.
+* A `draft-merge` ticket, even once fleet-safe, **stops at the merge gate** for a human
+  (that gate is decision 13's mitigation, and it stays). Warming it produces work that still
+  needs the founder present — the exact thing the inbox exists to avoid.
+
+So the two are not equal value, and the job now treats draft-merge-avoidance as the
+**primary** focus-selection axis, ahead of touched-first and closest-to-ready. The budget
+goes to fully-autonomous wins first; `draft-merge` subjects are worked last, when they are
+the best remaining use of a run — deferred, never starved.
+
+Two things this is careful *not* to be. It is not a change to constraint 6: a sensitive
+ticket still gets `draft-merge` when worked, and the classification "would this need
+draft-merge?" is the same cheap category match constraint 6 already requires, not new
+analysis. And it is not a licence to bias *recommendations* toward dodging the gate — the
+recommendation may prefer a non-`draft-merge` path only as a tie-breaker between options
+that are otherwise even on merit, never over correctness or a compliance category.
+
+Prompt-only; the wrapper and store are domain-blind and have no way to tell a payments
+ticket from a refactor, so the focus prompt is the only place this could live.
 
 ### Cadence: why 30 minutes is nearly free (decision 1, amended)
 

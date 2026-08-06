@@ -225,16 +225,34 @@ needs — about sixty questions before the first ticket is ready, instead of thr
 
 So this is not a tie-breaker among findings. **Choose one subject per run and work it.**
 
-1. **Pick the focus subject.** From your grouping, the best candidate is an issue that
-   already has settled questions — you have spent answers on it — and that your
-   `fleet-prep` assessment says is *still* not fleet-ready. Prefer the one closest to
-   ready. A subject you applied an answer to in phase A this run is the strongest
-   candidate of all, because you know its state is fresh.
+**Primary selection axis: prefer subjects that can reach `fleet-safe` without needing
+`draft-merge`.** This outranks every other criterion below. A ticket that lands `fleet-safe`
+and is *not* in a `draft-merge` category (constraint 6: billing, payments, Stripe, auth,
+tenant isolation, entitlements/tier-gating, GDPR/erasure) runs the entire chain unattended —
+build, auto-merge, deploy, nobody in the path. A `draft-merge` ticket, even once fleet-safe,
+still stops at the merge gate for a human, so warming it does *not* decouple throughput from
+the founder's presence — the whole point of this pipeline. A non-`draft-merge` ticket is
+therefore worth more warmed than a `draft-merge` one, and the limited question budget goes
+there first. Classify a candidate the cheap way, exactly as you would for constraint 6: a
+category match against its title, description, and the files it touches — no deep dive.
+
+This is prioritisation, not a licence to skip: constraint 6 is untouched, a sensitive ticket
+still gets `draft-merge` when you do work it, and you never mislabel one to dodge the gate.
+It only changes *which* ready-able ticket a run pours itself into first.
+
+1. **Pick the focus subject.** Among non-`draft-merge` subjects first, the best candidate is
+   one that already has settled questions — you have spent answers on it — and that your
+   `fleet-prep` assessment says is *still* not fleet-ready. Prefer the one closest to ready.
+   A subject you applied an answer to in phase A this run is the strongest candidate of all,
+   because you know its state is fresh.
 2. **Ask every remaining blocker on it**, up to the free slots. Not one. If it has three
    undecided forks and three slots are free, ask three — **there is no per-issue limit,
    and filling the whole pool from one ticket is a correct run, not a greedy one.**
-3. **Only when no touched-but-unready subject remains** do you start a new issue from the
-   wave — and then the same rule applies to it.
+3. **Then widen in order:** a fresh non-`draft-merge` issue from the wave; and only when no
+   non-`draft-merge` subject has a real remaining question do you turn to `draft-merge`
+   subjects — same internal ordering. Working a `draft-merge` ticket is the right call when
+   it is genuinely the best remaining use of the run, not never; it is just last. Asking
+   nothing still beats padding.
 
 Two things this does not override. Asking nothing is still better than padding: if the
 focus issue is genuinely clear now, move to the next one, and if nothing is worth asking,
@@ -358,6 +376,13 @@ Rules for the content:
   recommendation that sounds surer than you are.
 - **A recommendation never promises `fleet-safe` either**, for the same reason option
   descriptions cannot, and it never argues for skipping a check.
+- **Draft-merge as a tie-breaker only.** When a fork's resolution decides whether the ticket
+  lands in a `draft-merge` category — e.g. "enforce on the server" pulls in auth while
+  "client-only" may not — and the options are *otherwise genuinely even on merit*, prefer
+  the one that keeps the ticket fully autonomous, and say so in the rationale. This is a
+  tie-breaker and nothing more: never recommend a worse, less-correct, or less-safe option
+  to dodge `draft-merge`. Correctness and the compliance categories in constraint 6 always
+  win; the autonomy preference only breaks a tie they leave open.
 - **Never promise `fleet-safe` outright.** Phase A re-checks it against current state and
   may withhold it, so a description that says "sets Todo + fleet-safe" is writing a cheque
   the applier is right to refuse. Phrase it as conditional — *"sets Todo, and fleet-safe
