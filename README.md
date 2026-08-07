@@ -135,9 +135,8 @@ The dashboard half needs no setup — the tables and endpoints ship with the con
 turn the job on:
 
 ```powershell
-# Requires: claude CLI on PATH, and `linctl auth` already run once.
-# Run this from a shell where CLAUDE_CONFIG_DIR is set as you normally use it —
-# the script bakes that value into the task (see below for why).
+# Requires: claude CLI on PATH and authenticated in ~/.claude, and `linctl auth` run once.
+# Registering the task needs an elevated (admin) shell; running it does not.
 pwsh scripts/register-decision-inbox-task.ps1
 ```
 
@@ -148,11 +147,10 @@ session's working directory set to the target repo so it has code context. Pass
 skips without invoking Claude whenever the pool is full and nothing is answered.
 
 > **Two credentials, both per-user.** `linctl` reads `~/.linctl-auth.json`, and Claude
-> reads whichever config root `CLAUDE_CONFIG_DIR` points at. That variable is
-> **per-process** — it does not exist at User or Machine scope, so a scheduled task
-> inherits nothing and silently falls back to `~/.claude`. If that root isn't
-> authenticated, every run dies on auth while manual runs pass. Hence `-ConfigDir`; the
-> registration script captures the current value for you, and prints it so you can check.
+> reads its default config root `~/.claude`. The task runs as you, so it finds both — no
+> `CLAUDE_CONFIG_DIR` to set. (An earlier setup pinned a non-default root explicitly; that
+> is gone now that everything lives in `~/.claude`. If you ever run multiple config roots
+> again, see the design doc for the pinning trap you'd need to handle.)
 
 ```powershell
 Start-ScheduledTask -TaskName 'Decision Inbox'          # run it now

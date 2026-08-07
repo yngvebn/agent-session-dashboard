@@ -91,24 +91,31 @@ Two things it does *not* get, which is why the prompt is not merely a duplicate:
 
 ### Auth — two separate credentials, both easy to get wrong
 
-#### `CLAUDE_CONFIG_DIR` — the one that bit
+#### `CLAUDE_CONFIG_DIR` — the trap that once bit, now retired
 
-`CLAUDE_CONFIG_DIR` is set **per-process in interactive shells and does not exist at User
-or Machine scope.** A scheduled task inherits nothing and falls back to `~/.claude`, which
-on this machine is a different config root with **an expired OAuth session and a
-different memory set**. Manual runs passed because they inherited the variable; every
-scheduled run would have failed on auth.
+**Current state (2026-08-07):** Claude runs against its default config root, `~/.claude`.
+Nothing sets or bakes `CLAUDE_CONFIG_DIR`; the task runs as the user, inherits the profile,
+and finds `~/.claude` on its own. The `-ConfigDir` parameter and its machinery are gone from
+both scripts. This is the whole story now that there is a single config root — but the trap
+below is left on record, because it returns the moment a second root exists again.
 
-Both the wrapper and the registration script now take `-ConfigDir`, and the registration
-script bakes the current value into the task's arguments rather than trusting the
-environment. Verified 2026-08-03 with the variable stripped from the launching process:
-the run authenticated and completed. Pointed deliberately at the unauthenticated root, it
-records `failed` with `Claude auth failed (CLAUDE_CONFIG_DIR=…)` rather than a generic
-parse error — auth expiry is the failure most likely to appear out of nowhere and the
-least obvious from a generic message.
+**The trap.** `CLAUDE_CONFIG_DIR` is set **per-process in interactive shells and does not
+exist at User or Machine scope.** A scheduled task inherits nothing and falls back to
+`~/.claude`. When a *second* root existed (`~/.claude-aurum`) and `~/.claude` had an expired
+OAuth session, manual runs passed (they inherited the variable) while every scheduled run
+would have failed on auth. The fix then was to pin: both scripts took `-ConfigDir` and the
+registration baked the value into the task's arguments.
 
-Note also that `Start-Job` spawns a fresh process, so the variable is set again inside the
-job block; setting it in the parent alone is not enough.
+That pinning itself later bit, in the mirror-image way: with the value baked into the task,
+**consolidating** the roots back into `~/.claude` (2026-08-07) left the task pointing at a
+`~/.claude-aurum` that no longer existed, and every run failed `ConfigDir does not exist: …`
+until the task was re-registered without the argument. A baked absolute path is only correct
+until the filesystem moves under it. The lesson cuts both ways: pin when you must run a
+non-default root, but a pin is a standing liability — prefer a single default root, which is
+where this ended up.
+
+If you reintroduce multiple roots: bring back `-ConfigDir`, and remember `Start-Job` spawns a
+fresh process, so the variable has to be set inside the job block, not just the parent.
 
 #### `linctl` — verified working
 

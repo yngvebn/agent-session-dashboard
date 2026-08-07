@@ -10,9 +10,12 @@
     Claude whenever the pool is full and nothing is answered, which is most fires. The
     real throttle on cost is how fast questions get answered, not how often this ticks.
 
-    Running as the user is not optional: `linctl` reads credentials from
-    ~/.linctl-auth.json, which is per-profile. Registered as SYSTEM the job would
-    authenticate as nobody and fail on every run.
+    Running as the user is not optional: both `linctl` (~/.linctl-auth.json) and Claude
+    (~/.claude) read per-profile credentials. Registered as SYSTEM the job would
+    authenticate as nobody and fail on every run. Claude uses its default config root,
+    so nothing about CLAUDE_CONFIG_DIR needs setting — the task inherits the user profile
+    and finds ~/.claude on its own. (This was not always so: a second config root once
+    forced explicit pinning. The roots are now consolidated into ~/.claude.)
 
     By default the task uses the S4U logon type, which runs as the user without an
     interactive session — so no console window appears. Pass -ShowWindow to run it
@@ -39,8 +42,6 @@ param(
     [int]$IntervalMinutes    = 1,
     [int]$CadenceMinutes     = 30,
     [int]$TimeoutMinutes     = 20,
-    [string]$ConfigDir       = $env:CLAUDE_CONFIG_DIR,
-    [switch]$AllowDefaultConfig,
     [switch]$ShowWindow,
     [switch]$Unregister
 )
@@ -102,49 +103,9 @@ if (-not (Test-Path $authFile)) {
     Write-Warning "No $authFile — run 'linctl auth' before relying on this task."
 }
 
-# CLAUDE_CONFIG_DIR is per-process in interactive shells and absent at User/Machine
-# scope, so a scheduled task inherits nothing and silently falls back to ~/.claude —
-# a different config root with its own credentials. Bake the current value into the
-# task arguments rather than hoping the environment provides it.
-#
-# This fails rather than warns: a warning here produces a task that looks registered,
-# runs on schedule, and fails on auth every time — the exact silent rot the heartbeat
-# exists to catch, and better not to create in the first place.
-if (-not $ConfigDir) {
-    if (-not $AllowDefaultConfig) {
-        # List candidates rather than picking one. The presence of .credentials.json
-        # says nothing about whether those credentials still WORK — on this machine
-        # both roots have the file and only one authenticates, so a confident guess
-        # here would send you to the broken one.
-        $candidates = Get-ChildItem $HOME -Directory -Filter '.claude*' -ErrorAction SilentlyContinue |
-                      Where-Object { Test-Path (Join-Path $_.FullName '.credentials.json') }
-
-        $hint = if ($candidates) {
-            "`n`nConfig roots found (having credentials does NOT mean they are still valid —" +
-            "`nif unsure, run 'claude auth status' with CLAUDE_CONFIG_DIR set to each):`n" +
-            (($candidates | ForEach-Object { "  -ConfigDir '$($_.FullName)'" }) -join "`n")
-        } else { '' }
-        throw @"
-CLAUDE_CONFIG_DIR is not set in this shell, so the task cannot be pinned to a config root.
-
-That variable is per-process — it does not exist at User or Machine scope — so the
-scheduled task would fall back to the default root. If that root is not authenticated,
-EVERY run fails on auth while manual runs pass.
-
-Pass it explicitly:
-  pwsh scripts/register-decision-inbox-task.ps1 -ConfigDir '<path>'$hint
-
-Or, if the default root really is the authenticated one:
-  pwsh scripts/register-decision-inbox-task.ps1 -AllowDefaultConfig
-"@
-    }
-    else {
-        Write-Warning 'Registering against the default Claude config root (-AllowDefaultConfig).'
-    }
-}
-elseif (-not (Test-Path $ConfigDir)) {
-    throw "ConfigDir does not exist: $ConfigDir"
-}
+# Claude uses its default config root (~/.claude), which the task finds via the user
+# profile — no CLAUDE_CONFIG_DIR to set or bake. Nothing to verify here beyond linctl
+# above; if ~/.claude is ever unauthenticated the first run records a clear auth failure.
 
 $arguments = @(
     '-NoProfile'
@@ -155,7 +116,7 @@ $arguments = @(
     '-DashboardUrl', "`"$DashboardUrl`""
     '-CadenceMinutes', $CadenceMinutes
     '-TimeoutMinutes', $TimeoutMinutes
-) + $(if ($ConfigDir) { @('-ConfigDir', "`"$ConfigDir`"") } else { @() }) -join ' '
+) -join ' '
 
 $action = New-ScheduledTaskAction -Execute $pwsh -Argument $arguments -WorkingDirectory $PSScriptRoot
 
@@ -194,7 +155,7 @@ $settings = New-ScheduledTaskSettingsSet `
 #
 #   S4U         runs as the user in a non-interactive session: no window, ever. No
 #               stored password. The user profile is still loaded, so ~/.linctl-auth.json
-#               and CLAUDE_CONFIG_DIR resolve normally (verified).
+#               and ~/.claude resolve normally (verified).
 #   Interactive runs inside the logged-on session, so a console window pops to the
 #               foreground on every fire. Only useful for watching it work.
 #
@@ -222,7 +183,7 @@ Write-Host "Registered '$TaskName': ticks every $IntervalMinutes min, works ever
 Write-Host "  Runs as : $env:USERDOMAIN\$env:USERNAME ($logonType$(if (-not $ShowWindow) { ' — no console window' } else { ' — console window will appear' }))"
 Write-Host "  Repo    : $RepoPath"
 Write-Host "  Runner  : $runner"
-Write-Host "  Config  : $(if ($ConfigDir) { $ConfigDir } else { '<Claude default>' })"
+Write-Host "  Config  : Claude default root (~/.claude)"
 Write-Host "  Limit   : ${executionLimit} min per run (scheduler backstop)"
 Write-Host ''
 Write-Host 'Verify with:' -ForegroundColor Cyan
