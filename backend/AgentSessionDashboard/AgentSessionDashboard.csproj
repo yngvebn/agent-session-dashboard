@@ -12,6 +12,9 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.8" />
+    <!-- EF Core 10.0.x still pins SQLitePCLRaw 2.1.11 (GHSA-2m69-gcr7-jv3q).
+         Direct reference overrides the transitive pin; drop it once EF Core moves up. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
   </ItemGroup>
 
 </Project>
