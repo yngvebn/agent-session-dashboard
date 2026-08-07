@@ -99,8 +99,11 @@ public class SessionService(SessionDbContext db, SseService sseService)
             case "stop":
                 if (existing != null && (payload.TokensIn > 0 || payload.TokensOut > 0))
                 {
-                    existing.TokensIn += payload.TokensIn;
-                    existing.TokensOut += payload.TokensOut;
+                    // The hook re-parses the whole transcript and sends session totals,
+                    // not per-turn deltas — accumulating them here summed the prefix sums
+                    // and inflated the count by (n+1)/2 over n turns.
+                    existing.TokensIn = payload.TokensIn;
+                    existing.TokensOut = payload.TokensOut;
                     existing.LastSeen = payload.Timestamp ?? now;
                     await db.SaveChangesAsync();
                     sseService.BroadcastSessionUpdate(existing);
