@@ -3,12 +3,17 @@
     Registers (or removes) the decision-inbox scheduled task.
 
 .DESCRIPTION
-    Creates a Windows scheduled task that runs run-decision-inbox.ps1 on logon and
-    then every 30 minutes, as the current user.
+    Creates a Windows scheduled task that runs run-decision-inbox.ps1 once a minute, as
+    the current user.
 
-    A short interval is close to free: the runner's pre-flight skips without invoking
-    Claude whenever the pool is full and nothing is answered, which is most fires. The
-    real throttle on cost is how fast questions get answered, not how often this ticks.
+    By default the job is MANUAL-ONLY (-CadenceMinutes 0): a tick does nothing unless the
+    "Run now" button on the dashboard has left a request, which the tick claims. The
+    every-minute tick is only a poller — it exists so a button press is serviced within a
+    minute, since the container cannot start a host process itself. A tick with no request
+    does one HTTP GET and exits, writing nothing.
+
+    Pass a positive -CadenceMinutes to also run on the clock (e.g. -CadenceMinutes 30 for
+    the old behaviour: act whenever the last run is 30+ minutes old).
 
     Running as the user is not optional: both `linctl` (~/.linctl-auth.json) and Claude
     (~/.claude) read per-profile credentials. Registered as SYSTEM the job would
@@ -22,13 +27,17 @@
     inside your session instead, which pops a terminal to the foreground on every
     fire (occasionally handy for watching a run, annoying the rest of the time).
 
+.PARAMETER CadenceMinutes
+    0 (default) = manual-only. A positive value also runs on the clock, that many minutes
+    after the last run.
+
 .PARAMETER ShowWindow
     Use the Interactive logon type so a console window is visible while the job runs.
     Off by default.
 
 .EXAMPLE
-    pwsh scripts/register-decision-inbox-task.ps1
-    pwsh scripts/register-decision-inbox-task.ps1 -IntervalMinutes 120
+    pwsh scripts/register-decision-inbox-task.ps1                     # manual-only
+    pwsh scripts/register-decision-inbox-task.ps1 -CadenceMinutes 30  # also every 30 min
     pwsh scripts/register-decision-inbox-task.ps1 -Unregister
 #>
 [CmdletBinding()]
@@ -36,11 +45,11 @@ param(
     [string]$TaskName        = 'Decision Inbox',
     [string]$RepoPath        = 'C:\github\retrospective.fun',
     [string]$DashboardUrl    = 'http://localhost:5900',
-    # How often the task fires at all. The cadence — how often it does real work — is
-    # -CadenceMinutes, enforced in the runner. Ticking often is what makes the
-    # dashboard's "Run now" button possible: it is picked up on the next tick.
+    # How often the task fires at all. Ticking once a minute is what makes the dashboard's
+    # "Run now" button responsive: a press is picked up on the next tick. Independent of
+    # -CadenceMinutes, which decides whether a tick acts on the clock (0 = manual-only).
     [int]$IntervalMinutes    = 1,
-    [int]$CadenceMinutes     = 30,
+    [int]$CadenceMinutes     = 0,
     [int]$TimeoutMinutes     = 20,
     [switch]$ShowWindow,
     [switch]$Unregister
@@ -179,7 +188,8 @@ Register-ScheduledTask -TaskName $TaskName `
     -Principal $principal `
     -Description 'Decision inbox for retrospective.fun — asks the founder about stalled backlog decisions and applies the answers. See agent-session-dashboard/docs/DECISION-INBOX.md' | Out-Null
 
-Write-Host "Registered '$TaskName': ticks every $IntervalMinutes min, works every $CadenceMinutes min (or on request), plus 3 min after logon." -ForegroundColor Green
+$cadenceDesc = if ($CadenceMinutes -gt 0) { "acts on request or every $CadenceMinutes min" } else { "acts on 'Run now' request only (manual-only)" }
+Write-Host "Registered '$TaskName': ticks every $IntervalMinutes min, $cadenceDesc, plus a tick 3 min after logon." -ForegroundColor Green
 Write-Host "  Runs as : $env:USERDOMAIN\$env:USERNAME ($logonType$(if (-not $ShowWindow) { ' — no console window' } else { ' — console window will appear' }))"
 Write-Host "  Repo    : $RepoPath"
 Write-Host "  Runner  : $runner"

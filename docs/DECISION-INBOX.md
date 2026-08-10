@@ -34,9 +34,9 @@ browser tab, so the `Todo` queue stays warm without a session being open.
 One scheduled job, two phases per run, talking HTTP to the existing dashboard.
 
 ```
-Task Scheduler (ticks every 1 min, as user)
+Task Scheduler (ticks every 1 min, as user; manual-only by default)
    └── run-decision-inbox.ps1
-         ├── due yet? last run ≥30 min ago, or a "Run now" press to claim → else exit silently
+         ├── a "Run now" press to claim? (also: last run ≥ cadence, if one is set) → else exit silently
          ├── already in flight? → exit silently
          ├── cheap pre-flight: GET /api/questions  → skip if nothing to do
          └── claude -p  (cwd = C:\github\retrospective.fun)
@@ -163,6 +163,7 @@ deliberately rather than re-litigated by accident.
 | 23 | **A custom answer is a first-class answer** | Added 2026-08-05. Text with no option key is stored under the reserved `custom` key. "None of these" is a legitimate decision, and the strongest signal available that the question was framed badly — but the applier must never approximate it onto the nearest option. |
 | 24 | **The job may create and split issues** | Added 2026-08-05. Decomposition is prep, not build, so issue creation and parenting join the vocabulary — but only from an explicit answer, idempotently, and **never born claimable**. Reverses part of the original "no creating issues" line; see below for why it is safe and why it makes the whole thing better. |
 | 25 | **Focus prefers `fleet-safe`-without-`draft-merge` work** | Added 2026-08-08. A non-`draft-merge` ticket runs the whole chain unattended; a `draft-merge` one stalls at a human merge gate, so it does not decouple throughput from presence. Draft-merge-avoidance is now the primary focus-selection axis, ahead of "closest to ready" — a prioritisation, not a change to the constraint-6 safety gate. |
+| 26 | **Manual-only by default; the clock is off** | Added 2026-08-08. `-CadenceMinutes 0` is the default: the job acts only on a "Run now" press, never on a timer. The one-minute tick stays — it is just the poller that services the button — so cost between presses is one HTTP GET and nothing else. A positive cadence re-enables clock-driven runs. |
 
 ### Risk note on decision 13
 
@@ -307,11 +308,12 @@ task needs **no elevation**, unlike modifying it.)
 
 Four details that are each load-bearing:
 
-* **Cadence moved out of Task Scheduler and into the runner**, measured from the last
-  recorded run. That makes it self-healing — after sleep or a missed window the next tick
-  runs immediately instead of waiting for the next boundary — and it means the trigger
-  interval and the cadence are now two separate numbers (`-IntervalMinutes 1`,
-  `-CadenceMinutes 30`).
+* **Cadence moved out of Task Scheduler and into the runner**, a separate number from the
+  trigger interval (`-IntervalMinutes 1`, `-CadenceMinutes N`). As of 2026-08-08 the default
+  is `-CadenceMinutes 0` — **manual-only** (decision 26): the clock never triggers a run, only
+  a "Run now" press does. The one-minute tick still fires; with no cadence it is purely the
+  poller that picks the press up. A positive cadence brings back clock-driven runs, measured
+  from the last recorded run (self-healing after sleep or a missed window).
 * **`ExecutionTimeLimit` had to invert.** It was `min(30, interval - 5)`, on the reasoning
   that a hung run must not bleed into the next window. At a one-minute tick that yields
   five minutes and kills every real run. The premise died with the tick: overlapping fires
@@ -409,7 +411,12 @@ that are otherwise even on merit, never over correctness or a compliance categor
 Prompt-only; the wrapper and store are domain-blind and have no way to tell a payments
 ticket from a refactor, so the focus prompt is the only place this could live.
 
-### Cadence: why 30 minutes is nearly free (decision 1, amended)
+### Cadence: why frequent ticking is nearly free (decision 1, amended; now manual-only)
+
+> Historical as of 2026-08-08: the job is manual-only by default (decision 26), so no clock
+> cadence runs at all. The analysis below is why a clock cadence *was* cheap when one was set,
+> and it still governs the case where someone re-enables one with `-CadenceMinutes N` — or
+> presses "Run now" rapidly, where the same refill-rate/quality argument applies per press.
 
 Measured over the first 27 runs on the hourly schedule: **17 skipped** (pool full, nothing
 answered — one HTTP GET, no session), 8 `ok`, 2 `failed`. Invoked runs took 8–13 minutes
@@ -600,8 +607,8 @@ no-op run must not spend a token spinning up a session.
        unreachable            → exit 0, silently (nowhere to record anything)
        in flight, within lease → exit 0, silently
 2. GET /api/jobs/requests
-3. if no request AND last run < CadenceMinutes ago:
-       exit 0, silently                # ~29 ticks in 30. Writes NOTHING.
+3. if no request AND (manual-only OR last run < CadenceMinutes ago):
+       exit 0, silently                # nearly every tick in manual-only. Writes NOTHING.
 4. GET /api/questions
 5. POST /api/jobs/requests/claim       # at the START, so a mid-run press survives
 6. if openCount >= 3 AND pendingApply = 0:

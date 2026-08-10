@@ -10,23 +10,23 @@
     cost a session spin-up, which is what makes a short trigger interval essentially
     free — most fires skip on one HTTP GET.
 
-    Ticks every minute; the CADENCE is separate from the trigger interval and lives
-    here rather than in Task Scheduler. Two numbers that used to be one:
+    Ticks every minute; whether a tick DOES anything is decided here, not by Task
+    Scheduler. Two independent things:
 
       trigger interval  how often this script runs at all (1 min)
-      -CadenceMinutes   how often it does real work absent a manual request (30 min)
+      -CadenceMinutes   how often it acts on the clock absent a manual request.
+                        0 (the default) = MANUAL-ONLY: acts only on a "Run now"
+                        request, never on a timer.
 
-    Keeping the cadence in data — measured from the last recorded run — means it
-    self-heals. After sleep or a missed window the next tick runs immediately instead
-    of waiting for the next 30-minute boundary. It also lets the dashboard ask for a
-    run it cannot start itself: the container has no way to launch a host process, so
-    a button press becomes a JobRequests row that this script claims.
+    The every-minute tick is what makes the dashboard's "Run now" button work: the
+    container cannot launch a host process, so a press becomes a JobRequests row and
+    the next tick claims it — picked up within a minute either way.
 
-    A tick that decides "not yet" writes NOTHING. At one-minute granularity a
-    heartbeat per tick would be ~1440 rows a day and would destroy the meaning of
-    "last checked". A tick that decides to act but finds nothing to do still records
-    `skipped`, exactly as before — so the heartbeat keeps its ~30-minute cadence and
-    the UI's staleness threshold stays valid.
+    When a positive cadence is set it is measured from the last recorded run, so it
+    self-heals after sleep or a missed window. A tick that decides "not yet" (or, in
+    manual-only mode, finds no request) writes NOTHING — at one-minute granularity a
+    heartbeat per tick would be ~1440 rows a day and destroy the meaning of "last
+    checked". Only a tick that actually acts records anything.
 
     Registered with Task Scheduler by register-decision-inbox-task.ps1. Must run as
     the interactive user — both `linctl` (~/.linctl-auth.json) and Claude (~/.claude)
@@ -54,7 +54,9 @@ param(
     # which is what the reporter hook falls back to, and is indistinguishable from
     # a session you opened yourself in the same repo.
     [string]$SessionName  = 'Issue triage',
-    [int]$CadenceMinutes  = 30,
+    # 0 = manual-only (act only on a "Run now" request). A positive value also acts on
+    # the clock, that many minutes after the last run.
+    [int]$CadenceMinutes  = 0,
     [int]$TimeoutMinutes  = 20,
     [switch]$DryRun
 )
@@ -146,20 +148,27 @@ if ($lastRun -and -not $lastRun.finishedAt) {
 $requests = @(Get-Json "/api/jobs/requests?name=$JobName" | Where-Object { $_ })
 $requested = $requests.Count -gt 0
 
-# An unreachable dashboard now lands here with $lastRun null and $requested false, so it
-# is treated as "due" and proceeds to the questions fetch below — which returns $null and
-# exits silently. No heartbeat, no LLM, no flood. A genuinely fresh install (no runs yet)
-# takes the same path and correctly runs for the first time.
-$sinceLast = if ($lastRun) {
-    (Get-Date).ToUniversalTime() - ([datetime]$lastRun.startedAt).ToUniversalTime()
-} else {
-    [TimeSpan]::MaxValue    # never run: go now
+# Cadence is optional. With -CadenceMinutes 0 (the default) the job is MANUAL-ONLY: it acts
+# only on a "Run now" request and never on the clock. The every-minute tick still fires —
+# it is what polls the request table so the button is picked up within a minute — it just
+# has nothing to do between presses.
+#
+# With a positive cadence the old behaviour returns: due when the last run is that many
+# minutes old, and a fresh install (no runs yet) runs once immediately. An unreachable
+# dashboard leaves $requested false and $dueByCadence false, so it exits silently here —
+# no heartbeat, no LLM.
+$dueByCadence = $false
+if ($CadenceMinutes -gt 0) {
+    $dueByCadence = if ($lastRun) {
+        ((Get-Date).ToUniversalTime() - ([datetime]$lastRun.startedAt).ToUniversalTime()).TotalMinutes -ge $CadenceMinutes
+    } else {
+        $true    # cadence on, never run: go now
+    }
 }
-$dueByCadence = $sinceLast.TotalMinutes -ge $CadenceMinutes
 
 if (-not $requested -and -not $dueByCadence) {
-    # The common case, ~29 ticks out of 30. Deliberately writes nothing.
-    Write-Verbose ("Not due yet ({0:N0}m of {1}m) and nothing requested." -f $sinceLast.TotalMinutes, $CadenceMinutes)
+    # The common case. Deliberately writes nothing.
+    Write-Verbose ("Nothing requested" + $(if ($CadenceMinutes -gt 0) { " and not due yet ($CadenceMinutes m cadence)." } else { " (manual-only)." }))
     exit 0
 }
 
